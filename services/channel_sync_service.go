@@ -324,3 +324,52 @@ func ApproveAndCreateProduct(c *gin.Context, mappingID uint64) error {
 
 	return tx.Commit()
 }
+
+// GetUnmappedProducts lấy danh sách SKU chưa map (dùng chung cho Shopee, TikTok, Lazada...)
+func GetUnmappedProducts(c *gin.Context, channelType string, storeID uint64) ([]map[string]interface{}, error) {
+	db, err := utils.GetDBFromContext(c)
+	if err != nil {
+		return nil, err
+	}
+
+	userID := c.GetUint64("user_id")
+
+	query := `
+		SELECT id, store_id, channel_type, channel_product_id, channel_sku_id, 
+		       channel_sku_code, channel_product_name, channel_price, channel_quantity, channel_image, created_at 
+		FROM channel_product_mappings 
+		WHERE user_id = ? AND status = 'UNMAPPED'`
+
+	var args []interface{}
+	args = append(args, userID)
+
+	if channelType != "" {
+		query += " AND channel_type = ?"
+		args = append(args, channelType)
+	}
+
+	if storeID > 0 {
+		query += " AND store_id = ?"
+		args = append(args, storeID)
+	}
+
+	query += " ORDER BY id DESC"
+
+	utils.LogSQL(query, args...)
+
+	rows, err := db.Queryx(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make([]map[string]interface{}, 0)
+	for rows.Next() {
+		item := make(map[string]interface{})
+		if err := rows.MapScan(item); err == nil {
+			result = append(result, item)
+		}
+	}
+
+	return result, nil
+}

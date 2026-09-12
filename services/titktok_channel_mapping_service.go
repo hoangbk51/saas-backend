@@ -97,6 +97,7 @@ func ProcessChannelSKUMapping(tx *sqlx.Tx, userID uint64, item ChannelSKUItem, a
 	return 0, 0, err
 }
 
+/*
 // GetUnmappedProducts Service lấy danh sách sản phẩm chưa Map (Có thể lọc theo channel_type hoặc store_id)
 func GetUnmappedProducts(db *sqlx.DB, userID uint64, channelType string, storeID uint64) ([]map[string]interface{}, error) {
 	query := "SELECT `id`, `store_id`, `channel_type`, `channel_product_id`, `channel_sku_id`, " +
@@ -134,7 +135,7 @@ func GetUnmappedProducts(db *sqlx.DB, userID uint64, channelType string, storeID
 	}
 	return results, nil
 }
-
+*/
 // ManualMapSKU Service ghép nối thủ công
 func ManualMapSKU(db *sqlx.DB, userID uint64, req models.ManualMapSKURequest) error {
 	query := "UPDATE `channel_product_mappings` SET " +

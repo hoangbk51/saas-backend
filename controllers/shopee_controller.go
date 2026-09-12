@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 
 	"go-saas/services"
 	"go-saas/utils"
@@ -144,7 +145,10 @@ func SyncProductsFromChannel(c *gin.Context) {
 
 // GET /api/v1/channel/unmapped-products
 func GetUnmappedProducts(c *gin.Context) {
-	list, err := services.GetUnmappedProducts(c)
+	//channelType := c.Query("channel_type") // 'SHOPEE' hoặc 'TIKTOK'
+	storeID, _ := strconv.ParseUint(c.Query("store_id"), 10, 64)
+
+	list, err := services.GetUnmappedProducts(c, "SHOPEE", storeID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": "Lỗi lấy danh sách chờ ghép: " + err.Error()})
 		return

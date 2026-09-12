@@ -12,17 +12,13 @@ import (
 
 // GetUnmappedProductsHandler GET /api/v1/channel/unmapped
 func GetUnmappedProductsHandler(c *gin.Context) {
-	db, err := utils.GetDBFromContext(c)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": "Lỗi CSDL"})
-		return
-	}
-	userID := c.GetUint64("user_id")
 
-	channelType := c.Query("channel_type") // 'SHOPEE' hoặc 'TIKTOK'
+	//userID := c.GetUint64("user_id")
+
+	//channelType := c.Query("channel_type") // 'SHOPEE' hoặc 'TIKTOK'
 	storeID, _ := strconv.ParseUint(c.Query("store_id"), 10, 64)
 
-	list, err := services.GetUnmappedProducts(db, userID, channelType, storeID)
+	list, err := services.GetUnmappedProducts(c, "TIKTOK", storeID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": err.Error()})
 		return
