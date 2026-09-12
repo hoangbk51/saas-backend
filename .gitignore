@@ -1,0 +1,7 @@
+/.env
+/uploads
+/tmp
+/sql_debug.log
+/go.mod
+/go.sum
+/logs/

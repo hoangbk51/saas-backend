@@ -1,0 +1,300 @@
+ 1. Shopee APIs (/shopee)1.1 Auth & OAuthGET /shopee/connect-urlMô tả: Lấy URL đăng nhập & liên kết tài khoản Shopee.Response (200):JSON{
+  "code": 0,
+  "message": "Success",
+  "auth_url": "http://localhost:3003/api/v2/shopee/auth_partner?partner_id=mock_partner_123&redirect=http://localhost:8080/api/v1/shopee/callback"
+}
+1.2 Order ManagementGET /shopee/order/listQuery Params: partner_id, shop_id  Response (200):  JSON{
+  "error": "",
+  "message": "",
+  "request_id": "k8z9x0a1b2c",
+  "response": {
+    "order_list": [
+      { "order_sn": "240330123456" },
+      { "order_sn": "240330654321" }
+    ],
+    "more": false,
+    "next_cursor": ""
+  }
+}
+GET /shopee/order/detailQuery Params: order_sn_list (VD: 240330123456,240330654321)  Response (200):  JSON{
+  "error": "",
+  "message": "",
+  "request_id": "m1n2o3p4q5",
+  "response": {
+    "order_list": [
+      {
+        "id": 1,
+        "order_sn": "240330123456",
+        "order_status": "READY_TO_SHIP",
+        "tracking_number": "SPX_MOCK_123456",
+        "created_at": "2026-03-30T10:00:00.000Z"
+      }
+    ]
+  }
+}
+GET /shopee/order/shipmentsQuery Params: page_size (default: 10), cursor  Response (200):  JSON{
+  "error": "",
+  "message": "",
+  "request_id": "a9b8c7d6e5",
+  "response": {
+    "order_list": [
+      { "order_sn": "240330123456" }
+    ],
+    "more": false,
+    "next_cursor": ""
+  }
+}
+GET /shopee/order/shipping-parameterQuery Params: order_sn  Response (200):  JSON{
+  "error": "",
+  "message": "",
+  "request_id": "x1y2z3a4b5",
+  "response": {
+    "info_needed": {
+      "dropoff": [],
+      "pickup": ["address_id", "pickup_time_id"]
+    },
+    "pickup": {
+      "address_list": [
+        {
+          "address_id": 123456,
+          "region": "Viet Nam",
+          "state": "Hai Phong",
+          "city": "Thuy Nguyen",
+          "address": "Shop Central Warehouse",
+          "time_slot_list": [
+            {
+              "pickup_time_id": "1",
+              "date": 1711785600,
+              "time_text": "09:00 - 12:00"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
+GET /shopee/order/tracking-numberQuery Params: order_sn  Response (200):  JSON{
+  "error": "",
+  "message": "",
+  "request_id": "t9u8v7w6x5",
+  "response": {
+    "tracking_number": "SPX_MOCK_789012",
+    "plp_number": "PLP_SPX_MOCK_789012"
+  }
+}
+POST /shopee/order/shipRequest Body:  JSON{
+  "order_sn": "240330123456",
+  "pickup": {
+    "address_id": 123456,
+    "pickup_time_id": "1"
+  }
+}
+Response (200):  JSON{
+  "error": "",
+  "message": "",
+  "request_id": "s1h2i3p4m5",
+  "response": {}
+}
+POST /shopee/order/cancelRequest Body:  JSON{
+  "order_sn": "240330123456",
+  "cancel_reason": "OUT_OF_STOCK"
+}
+Response (200):  JSON{
+  "error": "",
+  "message": "",
+  "request_id": "c1a2n3c4l5",
+  "response": {
+    "update_time": 1774880000
+  }
+}
+1.3 Product ManagementGET /shopee/product/listQuery Params: offset (default: 0), page_size (default: 10), item_status (default: NORMAL)  Response (200):  JSON{
+  "error": "",
+  "message": "",
+  "request_id": "p1r2o3d4u5",
+  "response": {
+    "item": [
+      {
+        "item_id": 1001,
+        "item_status": "NORMAL",
+        "item_sku": "SKU-AO-THUM-01"
+      }
+    ],
+    "total_count": 1,
+    "has_next_page": false,
+    "next_offset": 1
+  }
+}
+GET /shopee/product/detailQuery Params: item_id_list (VD: 1001,1002)  Response (200):  JSON{
+  "error": "",
+  "message": "",
+  "request_id": "i1n2f3o4p5",
+  "response": {
+    "item_list": [
+      {
+        "item_id": 1001,
+        "item_name": "Áo thun Form Rộng",
+        "item_sku": "SKU-AO-THUM-01",
+        "item_status": "NORMAL",
+        "description": "Chất liệu cotton cao cấp",
+        "price_info": [
+          {
+            "currency": "VND",
+            "current_price": 150000,
+            "original_price": 200000
+          }
+        ],
+        "stock_info_v2": {
+          "summary_info": {
+            "total_available_stock": 100
+          }
+        },
+        "image": {
+          "image_url_list": ["https://example.com/img1.jpg"]
+        }
+      }
+    ]
+  }
+}
+POST /shopee/product/stockRequest Body:  JSON{
+  "item_id": 1001,
+  "stock_list": [
+    {
+      "seller_stock": [{ "stock": 50 }]
+    }
+  ]
+}
+Response (200):  JSON{
+  "error": "",
+  "message": "",
+  "request_id": "u1p2d3s4t5",
+  "response": {
+    "failure_list": [],
+    "success_list": [{ "item_id": 1001 }]
+  }
+}
+POST /shopee/product/priceRequest Body:  JSON{
+  "item_id": 1001,
+  "price_list": [
+    { "original_price": 180000 }
+  ]
+}
+Response (200):  JSON{
+  "error": "",
+  "message": "",
+  "request_id": "u1p2d3p4r5",
+  "response": {
+    "failure_list": [],
+    "success_list": [{ "item_id": 1001 }]
+  }
+}
+🖤 2. TikTok Shop APIs (/tiktok)2.1 Auth & OAuthGET /tiktok/connect-urlResponse (200):JSON{
+  "code": 0,
+  "message": "Success",
+  "auth_url": "http://localhost:3003/oauth/authorize?app_key=mock_app_key_123&state=C%C6%B0a+h%C3%A0ng"
+}
+2.2 Order ManagementPOST /tiktok/order/searchQuery Params: page_size (default: 10)  Request Body (Optional): {"order_status": "AWAITING_SHIPMENT"}  Response (200):  JSON{
+  "code": 0,
+  "message": "Success",
+  "request_id": "s1e2a3r4c5",
+  "data": {
+    "orders": [
+      {
+        "id": "TT123456",
+        "status": "AWAITING_SHIPMENT",
+        "create_time": 1774880000
+      }
+    ],
+    "total_count": 1,
+    "next_page_token": ""
+  }
+}
+GET /tiktok/order/detailQuery Params: order_ids (VD: TT123456,TT654321)  Response (200):  JSON{
+  "code": 0,
+  "message": "Success",
+  "request_id": "d1e2t3a4i5",
+  "data": {
+    "orders": [
+      {
+        "id": "TT123456",
+        "status": "AWAITING_SHIPMENT",
+        "buyer_email": "customer@example.com",
+        "payment": {
+          "total_amount": 250000,
+          "currency": "VND"
+        },
+        "item_list": [
+          {
+            "sku_id": "SKU_01",
+            "quantity": 2,
+            "sku_name": "Áo Khoác Nam"
+          }
+        ],
+        "tracking_number": ""
+      }
+    ]
+  }
+}
+POST /tiktok/order/shipRequest Body: {"order_id": "TT123456", "pick_up_type": "SELF_DISPATCH"}  Response (200):  JSON{
+  "code": 0,
+  "message": "Success",
+  "request_id": "s1h2i3p4t5",
+  "data": {
+    "tracking_number": "TTS_MOCK_852963"
+  }
+}
+2.3 Product ManagementPOST /tiktok/product/searchQuery Params: page_size (default: 10)  Request Body (Optional): {"status": "ACTIVED"}  Response (200):  JSON{
+  "code": 0,
+  "message": "Success",
+  "request_id": "p1r2o3d4s5",
+  "data": {
+    "products": [
+      {
+        "id": "TK1001",
+        "title": "Áo Hoodi Unisex",
+        "status": "ACTIVED",
+        "skus": [
+          {
+            "id": "SKU_01",
+            "price": { "original_price": "250000" },
+            "stock_infos": [{ "available_stock": 200 }]
+          }
+        ]
+      }
+    ],
+    "total_count": 1
+  }
+}
+POST /tiktok/product/stockRequest Body:  JSON{
+  "product_id": "TK1001",
+  "skus": [
+    {
+      "id": "SKU_01",
+      "stock_infos": [{ "available_stock": 150 }]
+    }
+  ]
+}
+Response (200):  JSON{
+  "code": 0,
+  "message": "Success",
+  "request_id": "u1s2t3o4c5",
+  "data": {
+    "failed_skus": []
+  }
+}
+POST /tiktok/product/priceRequest Body:  JSON{
+  "product_id": "TK1001",
+  "skus": [
+    {
+      "id": "SKU_01",
+      "price": { "original_price": "270000" }
+    }
+  ]
+}
+Response (200):  JSON{
+  "code": 0,
+  "message": "Success",
+  "request_id": "u1p2r3i4c5",
+  "data": {
+    "failed_skus": []
+  }
+}
