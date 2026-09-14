@@ -7,7 +7,7 @@ type TikTokSearchOrdersResponse struct {
 	RequestID string `json:"request_id"`
 	Data      struct {
 		Orders []struct {
-			ID         string `json:"id"`
+			ID         string `json:"id"` // <--- Đảm bảo đúng json:"id"
 			Status     string `json:"status"`
 			CreateTime int64  `json:"create_time"`
 		} `json:"orders"`
@@ -26,23 +26,48 @@ type TikTokOrderDetailResponse struct {
 }
 
 type TikTokOrder struct {
-	ID         string `json:"id"`
-	Status     string `json:"status"`
-	BuyerEmail string `json:"buyer_email"`
-	Payment    struct {
-		TotalAmount float64 `json:"total_amount"`
-		Currency    string  `json:"currency"`
-	} `json:"payment"`
-	ItemList []struct {
-		SKUID    string `json:"sku_id"`
-		Quantity int    `json:"quantity"`
-		SKUName  string `json:"sku_name"`
-		Price    string `json:"price"`
-	} `json:"item_list"`
+	ID             string            `json:"id"`
+	Status         string            `json:"status"`
+	Payment        TikTokPaymentInfo `json:"payment"`
+	BuyerEmail     string            `json:"buyer_email"`
+	ItemList       []TikTokOrderItem `json:"item_list"`
+	TrackingNumber string            `json:"tracking_number"`
+	CreateTime     int64             `json:"create_time"`
+}
+
+type TikTokPaymentInfo struct {
+	TotalAmount string `json:"total_amount"`
+	Currency    string `json:"currency"`
+}
+
+type TikTokOrderItem struct {
+	SKUID       string `json:"sku_id"`
+	Quantity    int    `json:"quantity"`
+	SKUName     string `json:"sku_name,omitempty"`
+	ProductName string `json:"product_name,omitempty"`
+	Price       string `json:"price,omitempty"`
+}
+
+/*
+type TikTokOrder struct {
+	ID         string      `json:"id"`
+	Status     string      `json:"status"`
+	Payment    PaymentInfo `json:"payment"`
+	BuyerEmail string      `json:"buyer_email"`
+	//Payment    struct {
+	//	TotalAmount float64 `json:"total_amount,string"`
+	//	Currency    string  `json:"currency"`
+	//} `json:"payment"`
+	//ItemList []struct {
+	//	SKUID    string `json:"sku_id"`
+	//	Quantity int    `json:"quantity"`
+	//	SKUName  string `json:"sku_name"`
+	//	Price    string `json:"price"`
+	//} `json:"item_list"`
 	TrackingNumber string `json:"tracking_number"`
 	CreateTime     int64  `json:"create_time"`
 }
-
+*/
 type TikTokSearchProductsResponse struct {
 	Code      int    `json:"code"`
 	Message   string `json:"message"`

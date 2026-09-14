@@ -12,7 +12,7 @@ import (
 
 // Helper lấy base URL TikTok Mock
 func getTikTokMockBase(c *gin.Context) string {
-	return utils.GetSetting(c, "tiktok_mock_url", "http://localhost:3003")
+	return utils.GetSetting(c, "tiktok_mock_url", "http://localhost:3003/api/v1")
 }
 
 // Helper gọi mock TikTok và trả JSON response trực tiếp ra Controller

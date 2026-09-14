@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"go-saas/utils"
 	"log"
+	"log/slog"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -13,6 +14,12 @@ import (
 // GetAllTenantSettings lấy toàn bộ cài đặt của Tenant (Ưu tiên Redis Cache + Parse đúng Type)
 func GetAllTenantSettings(c *gin.Context) (map[string]interface{}, error) {
 	tenantID := c.GetString("tenantId")
+	slog.Info("Xử lý đơn hàng thành công",
+		slog.String("tenant_id", tenantID),
+		slog.Float64("amount", 250.50),
+	)
+	return nil, nil
+
 	ctx := c.Request.Context()
 	cacheKey := fmt.Sprintf("tenant:%s:settings", tenantID)
 

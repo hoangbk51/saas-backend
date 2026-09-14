@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"go-saas/models"
 	"go-saas/utils"
+	"strconv"
 	"strings"
 	"time"
 
@@ -86,8 +87,13 @@ func SaveOrUpdateTikTokOrder(tx *sqlx.Tx, userID uint64, channelID int, ttOrder 
 			VariantID uint64 `db:"id"`
 		}
 
-		findSKUQuery := "SELECT `product_id`, `id` FROM `product_variants` WHERE `user_id` = ? AND `sku` = ? LIMIT 1"
-		err := tx.Get(&mappedVariant, findSKUQuery, userID, item.SKUID)
+		itemPriceFloat, err := strconv.ParseFloat(item.Price, 64)
+		if err != nil {
+			itemPriceFloat = 0.0
+		}
+
+		findSKUQuery := "SELECT `product_id`, `id` FROM `product_variants` WHERE `sku` = ? LIMIT 1"
+		err = tx.Get(&mappedVariant, findSKUQuery, item.SKUID)
 
 		finalProductID := mappedVariant.ProductID
 		if err != nil || finalProductID == 0 {
@@ -96,7 +102,7 @@ func SaveOrUpdateTikTokOrder(tx *sqlx.Tx, userID uint64, channelID int, ttOrder 
 
 		optionJSON := fmt.Sprintf(`{"sku_id":"%s","variant_id":%d}`, item.SKUID, mappedVariant.VariantID)
 
-		_, err = tx.Exec(itemQuery, orderID, finalProductID, item.SKUName, item.Quantity, item.Price, optionJSON)
+		_, err = tx.Exec(itemQuery, orderID, finalProductID, item.SKUName, item.Quantity, itemPriceFloat, optionJSON)
 		if err != nil {
 			return fmt.Errorf("lỗi insert order_items (SKU: %s): %w", item.SKUID, err)
 		}
@@ -111,40 +117,72 @@ func FetchTikTokOrdersFromAPI(c *gin.Context, mockBaseURL string, pageSize strin
 		"x-tts-access-token": c.GetHeader("Authorization"),
 	}
 
-	// BƯỚC 1: Gọi POST /tiktok/order/search lấy danh sách order_id
+	if reqBody == nil {
+		reqBody = make(map[string]interface{})
+	}
+
+	// BƯỚC 1: Gọi POST /tiktok/order/search
 	searchURL := fmt.Sprintf("%s/tiktok/order/search?page_size=%s", mockBaseURL, pageSize)
 	respBytes, err := utils.RequestMock(c, "POST", searchURL, headers, reqBody)
 	if err != nil && len(respBytes) == 0 {
 		return nil, fmt.Errorf("lỗi kết nối TikTok Search API: %w", err)
 	}
 
+	// Log trực tiếp chuỗi raw bytes trả về từ server (Tránh crash do json.Marshal lại)
+	utils.LogToFile(string(respBytes))
+
 	var searchRes models.TikTokSearchOrdersResponse
-	if err := json.Unmarshal(respBytes, &searchRes); err != nil || searchRes.Code != 0 {
-		return nil, fmt.Errorf("lỗi parse dữ liệu từ TikTok Search API")
+	if err := json.Unmarshal(respBytes, &searchRes); err != nil {
+		return nil, fmt.Errorf("lỗi parse JSON từ TikTok Search API: %w", err)
+	}
+
+	if searchRes.Code != 0 {
+		return nil, fmt.Errorf("TikTok Search API trả về lỗi: %s", searchRes.Message)
 	}
 
 	if len(searchRes.Data.Orders) == 0 {
 		return []models.TikTokOrder{}, nil
 	}
 
+	// Lấy danh sách Order IDs
 	var orderIDs []string
 	for _, ord := range searchRes.Data.Orders {
 		if ord.ID != "" {
 			orderIDs = append(orderIDs, ord.ID)
 		}
 	}
+	utils.LogToFile(orderIDs)
+	// CHẶN TẠI ĐÂY: Nếu không lấy được ID nào từ Bước 1 thì dừng luôn
+	if len(orderIDs) == 0 {
+		utils.LogToFile("CẢNH BÁO: Không bóc tách được order_id nào từ Search API")
+		return []models.TikTokOrder{}, nil
+	}
 
-	// BƯỚC 2: Gọi GET /tiktok/order/detail?order_ids=... lấy chi tiết
-	detailURL := fmt.Sprintf("%s/tiktok/order/detail?order_ids=%s", mockBaseURL, strings.Join(orderIDs, ","))
-	detailBytes, err := utils.RequestMock(c, "GET", detailURL, headers, nil)
-	if err != nil && len(detailBytes) == 0 {
+	// BƯỚC 2: Gọi API Detail lấy chi tiết đơn hàng
+	// Ghép các ID thành chuỗi query: ids=576829103829102
+	idsParam := strings.Join(orderIDs, ",")
+	detailURL := fmt.Sprintf("%s/tiktok/order/detail?order_ids=%s", mockBaseURL, idsParam)
+	utils.LogToFile(detailURL)
+
+	detailRespBytes, err := utils.RequestMock(c, "GET", detailURL, headers, nil)
+	if err != nil {
 		return nil, fmt.Errorf("lỗi kết nối TikTok Detail API: %w", err)
 	}
+	utils.LogToFile("12323")
+
+	// Ghi log RAW JSON của Detail API ra để kiểm tra
+	utils.LogToFile(string(detailRespBytes))
 
 	var detailRes models.TikTokOrderDetailResponse
-	if err := json.Unmarshal(detailBytes, &detailRes); err != nil || detailRes.Code != 0 {
-		return nil, fmt.Errorf("lỗi parse dữ liệu chi tiết đơn từ TikTok")
+	utils.LogToFile("abcd")
+	if err := json.Unmarshal(detailRespBytes, &detailRes); err != nil {
+		utils.LogToFile("lỗi parse dữ liệu: " + err.Error())
+		return nil, fmt.Errorf("lỗi parse dữ liệu chi tiết đơn từ TikTok: %w", err)
 	}
+
+	// Log dữ liệu đã parse thành công ra định dạng JSON để kiểm tra
+	parsedJSON, _ := json.Marshal(detailRes.Data.Orders)
+	utils.LogToFile("Dữ liệu sau khi parse: " + string(parsedJSON))
 
 	return detailRes.Data.Orders, nil
 }

@@ -42,7 +42,7 @@ func SyncTikTokProductsHandler(c *gin.Context) {
 		return
 	}
 	defer tx.Rollback()
-
+	utils.LogToFile("test")
 	syncedCount := 0
 	for _, product := range products {
 		if err := services.SaveOrUpdateTikTokProduct(tx, userID, product); err != nil {

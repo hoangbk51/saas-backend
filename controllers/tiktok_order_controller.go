@@ -39,6 +39,7 @@ func SyncTikTokOrdersHandler(c *gin.Context) {
 	// 1. Gọi Service lấy dữ liệu đơn hàng từ TikTok
 	mockBase := getTikTokMockBase(c)
 	orders, err := services.FetchTikTokOrdersFromAPI(c, mockBase, pageSize, reqBody)
+	utils.LogToFile(orders)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 1, "message": err.Error()})
 		return

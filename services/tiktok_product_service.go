@@ -34,6 +34,7 @@ func FetchTikTokProductsFromAPI(c *gin.Context, mockBaseURL string, pageSize str
 // SaveOrUpdateTikTokProduct lưu hoặc cập nhật Sản phẩm & Biến thể vào MySQL
 func SaveOrUpdateTikTokProduct(tx *sqlx.Tx, userID uint64, ttProduct models.TikTokProduct) error {
 	var productID uint64
+	utils.LogToFile("SaveOrUpdateTikTokProduct")
 
 	// 1. Kiểm tra sản phẩm đã tồn tại theo Tên/Title hoặc ID TikTok chưa
 	checkQuery := "SELECT `id` FROM `products` WHERE `user_id` = ? AND `name` = ? LIMIT 1"
@@ -42,15 +43,15 @@ func SaveOrUpdateTikTokProduct(tx *sqlx.Tx, userID uint64, ttProduct models.TikT
 	if err != nil || productID == 0 {
 		// Insert sản phẩm mới
 		insertProductSQL := "INSERT INTO `products` (" +
-			"`user_id`, `name`, `active`, `created_at`, `updated_at`" +
-			") VALUES (?, ?, ?, NOW(), NOW())"
+			" `title`, `active`, `created_at`, `updated_at`" +
+			") VALUES ( ?, ?, NOW(), NOW())"
 
 		activeStatus := 1
 		if ttProduct.Status != "ACTIVED" {
 			activeStatus = 0
 		}
 
-		res, err := tx.Exec(insertProductSQL, userID, ttProduct.Title, activeStatus)
+		res, err := tx.Exec(insertProductSQL, ttProduct.Title, activeStatus)
 		if err != nil {
 			return fmt.Errorf("lỗi insert product (%s): %w", ttProduct.Title, err)
 		}
@@ -72,18 +73,19 @@ func SaveOrUpdateTikTokProduct(tx *sqlx.Tx, userID uint64, ttProduct models.TikT
 
 		if vErr == nil && variantID > 0 {
 			// Cập nhật SKU đã có
-			updateVariantSQL := "UPDATE `product_variants` SET `price` = ?, `stock` = ?, `updated_at` = NOW() WHERE `id` = ?"
+			updateVariantSQL := "UPDATE `product_variants` SET `price` = ?, `quantity` = ?, `updated_at` = NOW() WHERE `id` = ?"
 			_, err = tx.Exec(updateVariantSQL, priceFloat, stockQty, variantID)
 			if err != nil {
 				return fmt.Errorf("lỗi update product_variant (SKU: %s): %w", sku.ID, err)
 			}
 		} else {
+			utils.LogToFile("insert SKU mới")
 			// Insert SKU mới
 			insertVariantSQL := "INSERT INTO `product_variants` (" +
-				"`product_id`, `user_id`, `sku`, `price`, `stock`, `created_at`, `updated_at`" +
-				") VALUES (?, ?, ?, ?, ?, NOW(), NOW())"
+				"`product_id`,  `sku`, `price`, `quantity`, `created_at`, `updated_at`" +
+				") VALUES (?, ?, ?, ?, NOW(), NOW())"
 
-			_, err = tx.Exec(insertVariantSQL, productID, userID, sku.ID, priceFloat, stockQty)
+			_, err = tx.Exec(insertVariantSQL, productID, sku.ID, priceFloat, stockQty)
 			if err != nil {
 				return fmt.Errorf("lỗi insert product_variant (SKU: %s): %w", sku.ID, err)
 			}

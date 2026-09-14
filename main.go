@@ -11,6 +11,7 @@ import (
 	"go-saas/tasks"
 	"go-saas/utils"
 	"log"
+	"log/slog"
 	"math"
 	"net/http"
 	"net/url"
@@ -404,6 +405,17 @@ func OptionalAuthMiddleware() gin.HandlerFunc {
 }
 
 func main() {
+
+	logFile, err := os.OpenFile("C:/promtail/logs/app.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatalf("Không thể mở file log: %v", err)
+	}
+	defer logFile.Close()
+
+	// 2. Cấu hình slog ghi định dạng JSON ra file này
+	logger := slog.New(slog.NewJSONHandler(logFile, nil))
+	slog.SetDefault(logger)
+
 	defer utils.CentralDB.Close()
 
 	redisOpt := asynq.RedisClientOpt{
@@ -986,7 +998,7 @@ func main() {
 					tiktok.GET("/connect-url", controllers.GetTikTokConnectURL)
 
 					// Order Endpoints
-					tiktok.POST("/order/search", controllers.SearchTikTokOrders)
+					//tiktok.POST("/order/search", controllers.SearchTikTokOrders)
 					tiktok.GET("/order/detail", controllers.FetchTikTokOrderDetail)
 					tiktok.POST("/order/ship", controllers.ShipTikTokOrder)
 
@@ -1007,9 +1019,9 @@ func main() {
 					//tiktok.POST("/product/search", controllers.SearchTikTokProductsHandler)
 
 					// Đồng bộ Sản phẩm & SKU biến thể TikTok về Database Web
-					tiktok.POST("/product/sync", controllers.SyncTikTokProductsHandler)
-					tiktok.GET("/unmapped", controllers.GetUnmappedProductsHandler)
-					tiktok.POST("/map", controllers.ManualMapSKUHandler)
+					tiktok.POST("/sync-products", controllers.SyncTikTokProductsHandler)
+					tiktok.GET("/unmapped-products", controllers.GetUnmappedProductsHandler)
+					tiktok.POST("/manual-map", controllers.ManualMapSKUHandler)
 					// Cập nhật tồn kho SKU sang TikTok
 					//	tiktok.POST("/product/stock", controllers.UpdateTikTokStockHandler)
 
