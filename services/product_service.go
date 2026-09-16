@@ -711,7 +711,8 @@ func GetProductBySlug(c *gin.Context, slug string) (*models.Product, error) {
 			p.offer_end,
 			p.linked_items,
 			m.file_name, 
-			m.id as model_id
+			m.id as model_id,
+			m.url
 		FROM products p
 		LEFT JOIN media m ON m.id = (
 			SELECT MAX(id) 
@@ -757,6 +758,7 @@ func GetProductBySlug(c *gin.Context, slug string) (*models.Product, error) {
 		&linkedItemsRaw,
 		&p.FileName,
 		&p.ModelID,
+		&p.Image,
 	)
 
 	if err != nil {
@@ -796,14 +798,15 @@ func GetProductBySlug(c *gin.Context, slug string) (*models.Product, error) {
 		p.OfferEnd = offerEndNull.Time
 	}
 
-	if p.ModelID.Valid && p.FileName.Valid && p.FileName.String != "" {
-		p.Image = fmt.Sprintf("http://%s/storage/tenancy/%s/app/public/%v/%v",
-			domainApi, tenantId, p.ModelID.Int64, p.FileName.String,
-		)
-	} else {
-		p.Image = "https://tutaoweb.com/images/clothe.png"
-	}
-
+	/*
+		if p.ModelID.Valid && p.FileName.Valid && p.FileName.String != "" {
+			p.Image = fmt.Sprintf("http://%s/storage/tenancy/%s/app/public/%v/%v",
+				domainApi, tenantId, p.ModelID.Int64, p.FileName.String,
+			)
+		} else {
+			p.Image = "https://tutaoweb.com/images/clothe.png"
+		}
+	*/
 	p.SubImages = []models.ProductImage{}
 	subImagesQuery := `
 		SELECT id, file_name 
