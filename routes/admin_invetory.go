@@ -1,0 +1,87 @@
+package routes
+
+import (
+	"go-saas/controllers"
+
+	"github.com/gin-gonic/gin"
+)
+
+// RegisterAdminRoutes đăng ký toàn bộ route cho admin
+func RegisterAdminRoutes(adminAuth *gin.RouterGroup) {
+
+	// --- INVENTORY MANAGEMENT MODULE (api/v2/admin) ---
+	// 1. Warehouses (Kho hàng)
+	adminAuth.GET("/warehouses", controllers.GetWarehouses)
+	adminAuth.GET("/warehouse", controllers.GetWarehouses)
+	adminAuth.GET("/warehouses/:id", controllers.GetWarehouse)
+	adminAuth.GET("/warehouse/:id", controllers.GetWarehouse)
+	adminAuth.POST("/warehouses", controllers.CreateWarehouse)
+	adminAuth.POST("/warehouse", controllers.CreateWarehouse)
+	adminAuth.PUT("/warehouses/:id", controllers.UpdateWarehouse)
+	adminAuth.PUT("/warehouse/:id", controllers.UpdateWarehouse)
+	adminAuth.POST("/warehouses/:id", controllers.UpdateWarehouse)
+	adminAuth.POST("/warehouse/:id", controllers.UpdateWarehouse)
+	adminAuth.DELETE("/warehouses/:id", controllers.DeleteWarehouse)
+	adminAuth.DELETE("/warehouse/:id", controllers.DeleteWarehouse)
+
+	// 2. Suppliers (Nhà cung cấp)
+	adminAuth.GET("/suppliers", controllers.GetSuppliers)
+	adminAuth.GET("/supplier", controllers.GetSuppliers)
+	adminAuth.GET("/suppliers/:id", controllers.GetSupplier)
+	adminAuth.GET("/supplier/:id", controllers.GetSupplier)
+	adminAuth.POST("/suppliers", controllers.CreateSupplier)
+	adminAuth.POST("/supplier", controllers.CreateSupplier)
+	adminAuth.PUT("/suppliers/:id", controllers.UpdateSupplier)
+	adminAuth.PUT("/supplier/:id", controllers.UpdateSupplier)
+	adminAuth.POST("/suppliers/:id", controllers.UpdateSupplier)
+	adminAuth.POST("/supplier/:id", controllers.UpdateSupplier)
+	adminAuth.DELETE("/suppliers/:id", controllers.DeleteSupplier)
+	adminAuth.DELETE("/supplier/:id", controllers.DeleteSupplier)
+
+	// 3. Manage Stocks (Quản lý tồn kho)
+	adminAuth.GET("/manage-stocks", controllers.GetStocks)
+	adminAuth.GET("/stocks", controllers.GetStocks)
+	adminAuth.PUT("/manage-stocks/:id", controllers.UpdateStock)
+	adminAuth.PUT("/stocks/:id", controllers.UpdateStock)
+
+	// 4. Purchases (Mua hàng)
+	adminAuth.GET("/purchases", controllers.GetPurchases)
+	adminAuth.GET("/purchase", controllers.GetPurchases)
+	adminAuth.GET("/purchases/:id", controllers.GetPurchase)
+	adminAuth.GET("/purchase/:id", controllers.GetPurchase)
+	adminAuth.POST("/purchases", controllers.CreatePurchase)
+	adminAuth.POST("/purchase", controllers.CreatePurchase)
+	adminAuth.DELETE("/purchases/:id", controllers.DeletePurchase)
+	adminAuth.DELETE("/purchase/:id", controllers.DeletePurchase)
+
+	// 5. Purchase Returns (Trả hàng mua)
+	adminAuth.GET("/purchase-returns", controllers.GetPurchaseReturns)
+	adminAuth.GET("/purchase-return", controllers.GetPurchaseReturns)
+	adminAuth.GET("/purchase-returns/:id", controllers.GetPurchaseReturn)
+	adminAuth.GET("/purchase-return/:id", controllers.GetPurchaseReturn)
+	adminAuth.POST("/purchase-returns", controllers.CreatePurchaseReturn)
+	adminAuth.POST("/purchase-return", controllers.CreatePurchaseReturn)
+	adminAuth.DELETE("/purchase-returns/:id", controllers.DeletePurchaseReturn)
+	adminAuth.DELETE("/purchase-return/:id", controllers.DeletePurchaseReturn)
+
+	// 6. Transfers (Đổi/Chuyển hàng giữa các kho)
+	adminAuth.GET("/transfers", controllers.GetTransfers)
+	adminAuth.GET("/transfer", controllers.GetTransfers)
+	adminAuth.GET("/transfers/:id", controllers.GetTransfer)
+	adminAuth.GET("/transfer/:id", controllers.GetTransfer)
+	adminAuth.POST("/transfers", controllers.CreateTransfer)
+	adminAuth.POST("/transfer", controllers.CreateTransfer)
+	adminAuth.DELETE("/transfers/:id", controllers.DeleteTransfer)
+	adminAuth.DELETE("/transfer/:id", controllers.DeleteTransfer)
+
+	// 7. Adjustments (Điều chỉnh số lượng)
+	adminAuth.GET("/adjustments", controllers.GetAdjustments)
+	adminAuth.GET("/adjustment", controllers.GetAdjustments)
+	adminAuth.GET("/adjustments/:id", controllers.GetAdjustment)
+	adminAuth.GET("/adjustment/:id", controllers.GetAdjustment)
+	adminAuth.POST("/adjustments", controllers.CreateAdjustment)
+	adminAuth.POST("/adjustment", controllers.CreateAdjustment)
+	adminAuth.DELETE("/adjustments/:id", controllers.DeleteAdjustment)
+	adminAuth.DELETE("/adjustment/:id", controllers.DeleteAdjustment)
+
+}

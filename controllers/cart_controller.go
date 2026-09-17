@@ -156,6 +156,26 @@ func CartUpdate(c *gin.Context) {
 	})
 }
 
+func ApplyCouponHandler(c *gin.Context) {
+	var payload models.ApplyCouponPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Dữ liệu không hợp lệ"})
+		return
+	}
+
+	clientIP := c.ClientIP()
+	result, err := services.ApplyCoupon(c, payload, clientIP)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status": "success",
+		"cart":   result,
+	})
+}
+
 /*
 func UpdateCartAddressHandler(c *gin.Context) {
 	cartID, err := strconv.ParseInt(c.Param("id"), 10, 64)

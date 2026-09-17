@@ -790,3 +790,55 @@ func RecalculateCart(c *gin.Context, items []models.CartItem) (*models.Recalcula
 	result.Quantity = totalQty
 	return &result, nil
 }
+
+func ApplyCoupon(c *gin.Context, input models.ApplyCouponPayload, clientIP string) (*models.RecalculateResult, error) {
+	db, err := utils.GetDBFromContext(c)
+	if err != nil {
+		return nil, err
+	}
+
+	couponCode := input.Coupon
+	if couponCode == "" {
+		return nil, fmt.Errorf("mã giảm giá không được để trống")
+	}
+
+	// 1. Tìm CartID của người dùng hiện tại (User đã đăng nhập hoặc Guest qua IP)
+	var cartID int64
+	if customerID, exists := c.Get("customerID"); exists && customerID != nil {
+		err = db.QueryRowContext(c.Request.Context(), "SELECT id FROM carts WHERE customer_id = ? AND deleted_at IS NULL LIMIT 1", customerID).Scan(&cartID)
+	} else {
+		err = db.QueryRowContext(c.Request.Context(), "SELECT id FROM carts WHERE ip_address = ? AND customer_id IS NULL AND deleted_at IS NULL LIMIT 1", clientIP).Scan(&cartID)
+	}
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("không tìm thấy giỏ hàng")
+		}
+		return nil, err
+	}
+
+	// 2. Tìm mã coupon trong database
+	var couponID int64
+	err = db.QueryRowContext(c.Request.Context(), "SELECT id FROM coupons WHERE code = ? AND deleted_at IS NULL LIMIT 1", couponCode).Scan(&couponID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("mã giảm giá không hợp lệ hoặc đã hết hạn")
+		}
+		return nil, err
+	}
+
+	// 3. Cập nhật coupon_id vào giỏ hàng
+	_, err = db.ExecContext(c.Request.Context(), "UPDATE carts SET coupon_id = ?, updated_at = NOW() WHERE id = ?", couponID, cartID)
+	if err != nil {
+		return nil, fmt.Errorf("không thể áp dụng mã giảm giá: %v", err)
+	}
+
+	// 4. Lấy lại dữ liệu Cart mới nhất
+	cart, err := GetCartById(c, cartID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 5. Tính toán lại giỏ hàng và trả về kết quả (đã bao gồm package services / shippingMethods)
+	return CartRecalculate(c, cart)
+}

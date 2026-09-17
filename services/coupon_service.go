@@ -1,6 +1,8 @@
 package services
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"go-saas/models"
@@ -211,6 +213,43 @@ func GetCouponByIDService(c *gin.Context) (interface{}, int, error) {
 	return gin.H{"data": coupon}, http.StatusOK, nil
 }
 
+// Helper chèn mảng ID vào bảng Pivot
+func insertCouponRelations(ctx context.Context, tx *sql.Tx, couponID int64, productIDs []int64, categoryIDs []int64) error {
+	// 1. Insert Product IDs
+	if len(productIDs) > 0 {
+		queryProd := `INSERT INTO coupon_products (coupon_id, product_id) VALUES `
+		vals := []interface{}{}
+		for i, pID := range productIDs {
+			if i > 0 {
+				queryProd += ", "
+			}
+			queryProd += "(?, ?)"
+			vals = append(vals, couponID, pID)
+		}
+		if _, err := tx.ExecContext(ctx, queryProd, vals...); err != nil {
+			return err
+		}
+	}
+
+	// 2. Insert Category IDs
+	if len(categoryIDs) > 0 {
+		queryCat := `INSERT INTO coupon_categories (coupon_id, category_id) VALUES `
+		vals := []interface{}{}
+		for i, cID := range categoryIDs {
+			if i > 0 {
+				queryCat += ", "
+			}
+			queryCat += "(?, ?)"
+			vals = append(vals, couponID, cID)
+		}
+		if _, err := tx.ExecContext(ctx, queryCat, vals...); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // 3. CREATE COUPON
 func CreateCouponService(c *gin.Context) (interface{}, int, error) {
 	tenantDB, err := utils.GetDBFromContext(c)
@@ -226,19 +265,16 @@ func CreateCouponService(c *gin.Context) (interface{}, int, error) {
 	nameJSON, _ := json.Marshal(input.Name)
 	descJSON, _ := json.Marshal(input.Description)
 
-	// Bật active mặc định là 1 nếu không truyền
 	activeVal := 1
 	if input.Active != nil && !*input.Active {
 		activeVal = 0
 	}
 
-	// Mặc định type là 'amount' nếu trống
 	if input.Type == "" {
 		input.Type = "amount"
 	}
 
 	var startTimePtr, endTimePtr *time.Time
-
 	if input.StartingTime != nil && *input.StartingTime != "" {
 		if t, err := time.Parse(timeLayout, *input.StartingTime); err == nil {
 			startTimePtr = &t
@@ -254,6 +290,14 @@ func CreateCouponService(c *gin.Context) (interface{}, int, error) {
 			return gin.H{"error": "Định dạng ending_time không hợp lệ (YYYY-MM-DD HH:mm:ss)"}, http.StatusBadRequest, nil
 		}
 	}
+
+	// Sử dụng Transaction
+	tx, err := tenantDB.BeginTx(c.Request.Context(), nil)
+	if err != nil {
+		return gin.H{"error": "Lỗi khởi tạo transaction: " + err.Error()}, http.StatusInternalServerError, err
+	}
+	defer tx.Rollback()
+
 	query := `
 		INSERT INTO coupons (
 			name, code, description, value, min_order_amount, type, 
@@ -262,17 +306,26 @@ func CreateCouponService(c *gin.Context) (interface{}, int, error) {
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
 	`
 
-	res, err := tenantDB.ExecContext(
+	res, err := tx.ExecContext(
 		c.Request.Context(), query,
 		string(nameJSON), input.Code, string(descJSON), input.Value, input.MinOrderAmount, input.Type,
 		input.Quantity, input.QuantityPerCustomer, startTimePtr, endTimePtr, activeVal,
 	)
-
 	if err != nil {
 		return gin.H{"error": "Lỗi tạo coupon: " + err.Error()}, http.StatusInternalServerError, err
 	}
 
 	couponID, _ := res.LastInsertId()
+
+	// Lưu quan hệ Products / Categories
+	if err := insertCouponRelations(c.Request.Context(), tx, couponID, input.ProductIDs, input.CategoryIDs); err != nil {
+		return gin.H{"error": "Lỗi gán sản phẩm/danh mục cho coupon: " + err.Error()}, http.StatusInternalServerError, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return gin.H{"error": "Lỗi lưu dữ liệu: " + err.Error()}, http.StatusInternalServerError, err
+	}
+
 	return gin.H{"message": "Tạo coupon thành công", "id": couponID}, http.StatusCreated, nil
 }
 
@@ -298,12 +351,11 @@ func UpdateCouponService(c *gin.Context) (interface{}, int, error) {
 		activeVal = 0
 	}
 
-	var startTimePtr, endTimePtr *time.Time
-
 	if input.Type == "" {
 		input.Type = "amount"
 	}
 
+	var startTimePtr, endTimePtr *time.Time
 	if input.StartingTime != nil && *input.StartingTime != "" {
 		if t, err := time.Parse(timeLayout, *input.StartingTime); err == nil {
 			startTimePtr = &t
@@ -319,21 +371,27 @@ func UpdateCouponService(c *gin.Context) (interface{}, int, error) {
 			return gin.H{"error": "Định dạng ending_time không hợp lệ (YYYY-MM-DD HH:mm:ss)"}, http.StatusBadRequest, nil
 		}
 	}
+
+	tx, err := tenantDB.BeginTx(c.Request.Context(), nil)
+	if err != nil {
+		return gin.H{"error": "Lỗi khởi tạo transaction: " + err.Error()}, http.StatusInternalServerError, err
+	}
+	defer tx.Rollback()
+
 	query := `
 		UPDATE coupons 
 		SET name = ?, code = ?, description = ?, value = ?, min_order_amount = ?, type = ?, 
-		    quantity = ?, quantity_per_customer = ?, starting_time = ?, ending_time = ?, active = ?, 
-		    updated_at = NOW() 
+			quantity = ?, quantity_per_customer = ?, starting_time = ?, ending_time = ?, active = ?, 
+			updated_at = NOW() 
 		WHERE id = ? AND deleted_at IS NULL
 	`
 
-	res, err := tenantDB.ExecContext(
+	res, err := tx.ExecContext(
 		c.Request.Context(), query,
 		string(nameJSON), input.Code, string(descJSON), input.Value, input.MinOrderAmount, input.Type,
 		input.Quantity, input.QuantityPerCustomer, startTimePtr, endTimePtr, activeVal,
 		id,
 	)
-
 	if err != nil {
 		return gin.H{"error": "Lỗi cập nhật coupon: " + err.Error()}, http.StatusInternalServerError, err
 	}
@@ -341,6 +399,25 @@ func UpdateCouponService(c *gin.Context) (interface{}, int, error) {
 	rowsAffected, _ := res.RowsAffected()
 	if rowsAffected == 0 {
 		return gin.H{"error": "Coupon không tồn tại hoặc đã bị xóa"}, http.StatusNotFound, nil
+	}
+
+	couponID, _ := strconv.ParseInt(id, 10, 64)
+
+	// Xóa các liên kết cũ trong bảng pivot
+	if _, err := tx.ExecContext(c.Request.Context(), "DELETE FROM coupon_products WHERE coupon_id = ?", couponID); err != nil {
+		return gin.H{"error": "Lỗi làm sạch dữ liệu product cũ: " + err.Error()}, http.StatusInternalServerError, err
+	}
+	if _, err := tx.ExecContext(c.Request.Context(), "DELETE FROM coupon_categories WHERE coupon_id = ?", couponID); err != nil {
+		return gin.H{"error": "Lỗi làm sạch dữ liệu category cũ: " + err.Error()}, http.StatusInternalServerError, err
+	}
+
+	// Gán lại quan hệ mới
+	if err := insertCouponRelations(c.Request.Context(), tx, couponID, input.ProductIDs, input.CategoryIDs); err != nil {
+		return gin.H{"error": "Lỗi cập nhật sản phẩm/danh mục cho coupon: " + err.Error()}, http.StatusInternalServerError, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return gin.H{"error": "Lỗi lưu dữ liệu: " + err.Error()}, http.StatusInternalServerError, err
 	}
 
 	return gin.H{"message": "Cập nhật coupon thành công"}, http.StatusOK, nil

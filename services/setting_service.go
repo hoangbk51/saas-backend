@@ -18,7 +18,6 @@ func GetAllTenantSettings(c *gin.Context) (map[string]interface{}, error) {
 		slog.String("tenant_id", tenantID),
 		slog.Float64("amount", 250.50),
 	)
-	return nil, nil
 
 	ctx := c.Request.Context()
 	cacheKey := fmt.Sprintf("tenant:%s:settings", tenantID)
@@ -131,8 +130,12 @@ func UpdateTenantSettings(c *gin.Context, settingsMap map[string]json.RawMessage
 	}
 	defer tx.Rollback()
 
-	// 2. Chuẩn bị câu lệnh UPDATE (Dùng WHERE code = ? hoặc key = ? tùy schema của bạn)
-	query := "UPDATE settings SET value = ? WHERE code = ?"
+	// 2. Cú pháp UPSERT (MySQL): Thêm mới nếu chưa có, cập nhật nếu đã tồn tại 'code'
+	query := `
+		INSERT INTO settings (code, value) 
+		VALUES (?, ?) 
+		ON DUPLICATE KEY UPDATE value = VALUES(value)
+	`
 	stmt, err := tx.PrepareContext(ctx, query)
 	if err != nil {
 		log.Printf("[Service Error] Prepare statement failed: %v", err)
@@ -140,24 +143,22 @@ func UpdateTenantSettings(c *gin.Context, settingsMap map[string]json.RawMessage
 	}
 	defer stmt.Close()
 
-	// 3. Duyệt qua từng cặp code - rawValue để chuẩn hóa và UPDATE
+	// 3. Duyệt qua từng cặp code - rawValue để chuẩn hóa và UPSERT
 	for code, rawValue := range settingsMap {
 		var cleanValue string
 
-		// Thử unmarshal xem có phải là JSON string có bao ngoặc kép không (vd: "\"vi\"")
+		// Thử unmarshal xem có phải là JSON string có bao ngoặc kép không
 		var strVal string
 		if err := json.Unmarshal(rawValue, &strVal); err == nil {
-			// Nếu Unmarshal thành công -> Nó là String đơn thuần (vd: "vi", "VND", "20")
 			cleanValue = strVal
 		} else {
-			// Nếu Unmarshal ra string bị lỗi -> Nó là Object/Array/Boolean JSON (vd: {"order_created":...})
-			// Giữ nguyên nguyên bản chuỗi JSON để lưu vào DB
 			cleanValue = string(rawValue)
 		}
 
-		_, err := stmt.ExecContext(ctx, cleanValue, code)
+		// Truyền tham số: code (INSERT), cleanValue (INSERT), value sẽ tự UPDATE nếu trùng code
+		_, err := stmt.ExecContext(ctx, code, cleanValue)
 		if err != nil {
-			log.Printf("[Service Error] Update failed for code %s: %v", code, err)
+			log.Printf("[Service Error] Upsert failed for code %s: %v", code, err)
 			return err
 		}
 	}
@@ -169,7 +170,6 @@ func UpdateTenantSettings(c *gin.Context, settingsMap map[string]json.RawMessage
 	}
 
 	// 5. XÓA CACHE REDIS (Cache Invalidation)
-	// Xóa sạch Hash settings của Tenant để lần gọi GetSetting tới tự động load lại DB
 	if utils.RedisClient != nil && tenantID != "" {
 		cacheKey := "tenant:" + tenantID + ":settings"
 		if err := utils.RedisClient.Del(ctx, cacheKey).Err(); err != nil {

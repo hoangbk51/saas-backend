@@ -149,3 +149,7 @@ type CartItemWithProduct struct {
 	ProductWeight    float64       `db:"weight"`
 	Option           string
 }
+
+type ApplyCouponPayload struct {
+	Coupon string `json:"coupon" binding:"required"`
+}

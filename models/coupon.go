@@ -13,4 +13,6 @@ type Coupon struct {
 	StartingTime        *string           `json:"starting_time"`           // Nhận chuỗi string từ JSON
 	EndingTime          *string           `json:"ending_time"`             // Nhận chuỗi string từ JSON
 	Active              *bool             `json:"active"`                  // Trang thái bật/tắt (mặc định 1)
+	ProductIDs          []int64           `json:"product_ids"`
+	CategoryIDs         []int64           `json:"category_ids"`
 }
