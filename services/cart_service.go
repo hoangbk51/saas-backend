@@ -8,6 +8,8 @@ import (
 	_ "go-saas/shipping/providers" // 🟢 Trigger init() của các provider an toàn, không lo import cycle	"go-saas/utils"
 	"go-saas/utils"
 	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -100,7 +102,6 @@ func GetCartById(c *gin.Context, cartID int64) (*models.Cart, error) {
 func getCartItemsWithProduct(c *gin.Context, cartID int64) ([]models.CartItemWithProduct, error) {
 	db, _ := utils.GetDBFromContext(c)
 
-	// Bọc `option` trong dấu backtick: `option`
 	query := fmt.Sprintf(`
 		SELECT 
 			ci.id, 
@@ -111,12 +112,19 @@ func getCartItemsWithProduct(c *gin.Context, cartID int64) ([]models.CartItemWit
 			ci.item_description,
 			p.title AS title, 
 			COALESCE(p.shipping_weight, 0) AS weight,
+			COALESCE(
+				(
+					SELECT GROUP_CONCAT(cp.category_id) 
+					FROM category_product cp 
+					WHERE cp.product_id = ci.product_id
+				), ''
+			) AS category_ids_str,
 			%s AS `+"`option`"+`
 		FROM cart_items ci
 		JOIN products p ON ci.product_id = p.id
 		WHERE ci.cart_id = ? AND ci.deleted_at IS NULL`, optionSubquery)
 
-	rows, err := db.Query(query, cartID)
+	rows, err := db.QueryContext(c.Request.Context(), query, cartID)
 	if err != nil {
 		return nil, err
 	}
@@ -125,6 +133,8 @@ func getCartItemsWithProduct(c *gin.Context, cartID int64) ([]models.CartItemWit
 	var results []models.CartItemWithProduct
 	for rows.Next() {
 		var i models.CartItemWithProduct
+		var catIDsStr string
+
 		err := rows.Scan(
 			&i.ID,
 			&i.ProductID,
@@ -134,11 +144,22 @@ func getCartItemsWithProduct(c *gin.Context, cartID int64) ([]models.CartItemWit
 			&i.ItemDescription,
 			&i.ProductTitle,
 			&i.ProductWeight,
+			&catIDsStr, // 🟢 Scan chuỗi Category IDs (vd: "1,4,12")
 			&i.Option,
 		)
 		if err != nil {
 			return nil, err
 		}
+
+		// Convert chuỗi Category IDs thành slice []int64
+		if catIDsStr != "" {
+			for _, strID := range strings.Split(catIDsStr, ",") {
+				if id, err := strconv.ParseInt(strings.TrimSpace(strID), 10, 64); err == nil {
+					i.CategoryIDs = append(i.CategoryIDs, id)
+				}
+			}
+		}
+
 		results = append(results, i)
 	}
 	return results, nil
@@ -187,11 +208,10 @@ func CartRecalculate(c *gin.Context, cart *models.Cart) (*models.RecalculateResu
 		})
 	}
 
-	// Cập nhật lại weight cho struct Cart để phục vụ tính phí ship bên dưới
+	// Cập nhật weight cho Cart
 	cart.ShippingWeight = totalWeight
-	utils.LogToFile("// 1. Tính toán danh sách các phương thức và gói dịch vụ vận chuyển khả dụng")
 
-	// 1. Tính toán danh sách các phương thức và gói dịch vụ vận chuyển khả dụng (đã call API 1 lần duy nhất ở đây)
+	// 1. Lấy danh sách Shipping Methods khả dụng
 	availableShippingMethods := GetAvailableShippingMethods(c, cart)
 
 	// 2. Khởi tạo danh sách Charges
@@ -207,25 +227,25 @@ func CartRecalculate(c *gin.Context, cart *models.Cart) (*models.RecalculateResu
 		charges = append(charges, tax)
 	}
 
-	// 4. Lấy Phí vận chuyển từ danh sách availableShippingMethods đã tính ở bước 1 (Không gọi API nữa)
+	// 4. Lấy Phí vận chuyển
 	shippingCost := calculateShippingRate(cart, availableShippingMethods)
-	cart.Shipping = &shippingCost // Cập nhật trực tiếp vào struct Cart
+	cart.Shipping = &shippingCost
 	charges = append(charges, models.CartCharge{Title: "Shipping", Value: shippingCost, Code: "shipping"})
 	runningTotal += shippingCost
 
-	// 5. Tính Discount/Coupon
-	discount := calculateDiscount(c, cart.CouponID, runningTotal)
+	// 5. Tính Discount / Coupon (Truyền danh sách cartItems để kiểm tra sản phẩm/danh mục áp dụng)
+	discount := calculateDiscount(c, cart.CouponID, subTotal, cartItems)
 	if discount > 0 {
 		charges = append(charges, models.CartCharge{Title: "Discount", Value: discount, Code: "discount"})
 		runningTotal -= discount
 	}
 
 	// 6. Cập nhật DB Cart
-	_, err = db.Exec(`
+	_, err = db.ExecContext(c.Request.Context(), `
 		UPDATE carts 
-		SET item_count = ?, quantity = ?, total = ?, grand_total = ?, shipping_weight = ?, shipping = ?, updated_at = NOW() 
+		SET item_count = ?, quantity = ?, total = ?, discount = ?, grand_total = ?, shipping_weight = ?, shipping = ?, updated_at = NOW() 
 		WHERE id = ?`,
-		len(items), count, subTotal, runningTotal, totalWeight, shippingCost, cartID,
+		len(items), count, subTotal, discount, runningTotal, totalWeight, shippingCost, cartID,
 	)
 	if err != nil {
 		return nil, err
@@ -237,7 +257,7 @@ func CartRecalculate(c *gin.Context, cart *models.Cart) (*models.RecalculateResu
 		Items:           items,
 		Total:           runningTotal,
 		Charges:         charges,
-		ShippingMethods: availableShippingMethods, // Trả về danh sách Shipping Method & Package Services
+		ShippingMethods: availableShippingMethods,
 		Data:            cart,
 	}, nil
 }
@@ -305,8 +325,7 @@ func parseTimeString(timeStr *string) *time.Time {
 	return nil
 }
 
-func calculateDiscount(c *gin.Context, couponID *int64, runningTotal float64) float64 {
-	// Nếu không có coupon, trả về 0 luôn
+func calculateDiscount(c *gin.Context, couponID *int64, subTotal float64, cartItems []models.CartItemWithProduct) float64 {
 	if couponID == nil || *couponID == 0 {
 		return 0
 	}
@@ -316,14 +335,16 @@ func calculateDiscount(c *gin.Context, couponID *int64, runningTotal float64) fl
 		return 0
 	}
 
-	// 1. Lấy thông tin chi tiết coupon từ DB
+	ctx := c.Request.Context()
+
+	// 1. Lấy thông tin coupon
 	var cp models.Coupon
-	var startTimeStr, endTimeStr sql.NullString // Dùng NullString để Scan cột timestamp/datetime từ MySQL an toàn
+	var startTimeStr, endTimeStr sql.NullString
 
 	query := `SELECT id, type, value, min_order_amount, quantity, active, starting_time, ending_time 
-	          FROM coupons WHERE id = ? AND deleted_at IS NULL LIMIT 1`
+			  FROM coupons WHERE id = ? AND deleted_at IS NULL LIMIT 1`
 
-	err = db.QueryRowContext(c.Request.Context(), query, couponID).Scan(
+	err = db.QueryRowContext(ctx, query, couponID).Scan(
 		&cp.ID,
 		&cp.Type,
 		&cp.Value,
@@ -333,13 +354,10 @@ func calculateDiscount(c *gin.Context, couponID *int64, runningTotal float64) fl
 		&startTimeStr,
 		&endTimeStr,
 	)
-
-	// Kiểm tra xem có tìm thấy coupon không
 	if err != nil {
 		return 0
 	}
 
-	// Gán chuỗi thời gian vào struct nếu tồn tại
 	if startTimeStr.Valid {
 		cp.StartingTime = &startTimeStr.String
 	}
@@ -347,50 +365,98 @@ func calculateDiscount(c *gin.Context, couponID *int64, runningTotal float64) fl
 		cp.EndingTime = &endTimeStr.String
 	}
 
-	// 2. KIỂM TRA ĐIỀU KIỆN (Logic validation)
+	// 2. Validate cơ bản
 	now := time.Now()
-
-	// Check 1: Trạng thái Active
 	if cp.Active != nil && !*cp.Active {
 		return 0
 	}
-
-	// Check 2: Số lượng (Quantity)
-	// (Nếu cp.Quantity == nil nghĩa là NULL -> Không giới hạn số lượng -> Cho qua)
 	if cp.Quantity != nil && *cp.Quantity <= 0 {
 		return 0
 	}
 
-	// Check 3: Thời gian bắt đầu (StartingTime)
 	startTime := parseTimeString(cp.StartingTime)
 	if startTime != nil && now.Before(*startTime) {
-		return 0 // Chưa tới thời gian áp dụng coupon
-	}
-
-	// Check 4: Thời gian kết thúc (EndingTime)
-	endTime := parseTimeString(cp.EndingTime)
-	if endTime != nil && now.After(*endTime) {
-		return 0 // Đã hết hạn coupon
-	}
-
-	// Check 5: Giá trị đơn hàng tối thiểu (min_order_amount)
-	if runningTotal < cp.MinOrderAmount {
 		return 0
 	}
 
-	// 3. TÍNH TOÁN GIẢM GIÁ
+	endTime := parseTimeString(cp.EndingTime)
+	if endTime != nil && now.After(*endTime) {
+		return 0
+	}
+
+	// 3. Lấy danh sách Product IDs & Category IDs áp dụng cho Coupon
+	allowedProductIDs := make(map[int64]bool)
+	rowsP, err := db.QueryContext(ctx, "SELECT product_id FROM coupon_products WHERE coupon_id = ?", *couponID)
+	if err == nil {
+		defer rowsP.Close()
+		for rowsP.Next() {
+			var pID int64
+			if err := rowsP.Scan(&pID); err == nil {
+				allowedProductIDs[pID] = true
+			}
+		}
+	}
+
+	allowedCategoryIDs := make(map[int64]bool)
+	rowsC, err := db.QueryContext(ctx, "SELECT category_id FROM coupon_categories WHERE coupon_id = ?", *couponID)
+	if err == nil {
+		defer rowsC.Close()
+		for rowsC.Next() {
+			var cID int64
+			if err := rowsC.Scan(&cID); err == nil {
+				allowedCategoryIDs[cID] = true
+			}
+		}
+	}
+
+	hasProductRestriction := len(allowedProductIDs) > 0
+	hasCategoryRestriction := len(allowedCategoryIDs) > 0
+
+	// 4. Lọc và tính tổng tiền các sản phẩm hợp lệ (Eligible Total)
+	var eligibleSubTotal float64
+
+	for _, item := range cartItems {
+		itemTotal := item.UnitPrice * float64(item.Quantity)
+
+		if hasProductRestriction || hasCategoryRestriction {
+			isProductValid := hasProductRestriction && allowedProductIDs[item.ProductID]
+
+			// Kiểm tra xem sản phẩm có danh mục nào trùng với danh mục coupon cho phép không
+			isCategoryValid := false
+			if hasCategoryRestriction {
+				for _, catID := range item.CategoryIDs {
+					if allowedCategoryIDs[catID] {
+						isCategoryValid = true
+						break
+					}
+				}
+			}
+
+			if isProductValid || isCategoryValid {
+				eligibleSubTotal += itemTotal
+			}
+		} else {
+			// Coupon áp dụng toàn bộ cửa hàng
+			eligibleSubTotal += itemTotal
+		}
+	}
+
+	// Nếu không có sản phẩm nào đủ điều kiện hoặc tổng tiền < min_order_amount
+	if eligibleSubTotal <= 0 || eligibleSubTotal < cp.MinOrderAmount {
+		return 0
+	}
+
+	// 5. Tính giá trị giảm giá
 	var discountAmount float64
 
 	if cp.Type == "percent" {
-		discountAmount = (runningTotal * cp.Value) / 100
+		discountAmount = (eligibleSubTotal * cp.Value) / 100
 	} else {
-		// Kiểu 'amount'
 		discountAmount = cp.Value
 	}
 
-	// Đảm bảo số tiền giảm không vượt quá tổng tiền hàng
-	if discountAmount > runningTotal {
-		discountAmount = runningTotal
+	if discountAmount > eligibleSubTotal {
+		discountAmount = eligibleSubTotal
 	}
 
 	return discountAmount

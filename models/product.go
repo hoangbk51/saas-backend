@@ -51,6 +51,17 @@ type Product struct {
 	Attributes         []GroupedAttribute     `json:"attributes"`
 	DeleteAttributeIDs []uint32               `json:"delete_attribute_ids" form:"delete_attribute_ids[]"`
 	Variants           []ProductVariantDetail `json:"variants"`
+	Discounts          []ProductDiscount
+}
+
+type ProductDiscount struct {
+	ID        int64   `json:"id"`
+	ProductID int64   `json:"product_id"`
+	Quantity  int     `json:"quantity"`
+	Priority  int     `json:"priority"`
+	Price     float64 `json:"price"`
+	DateStart *string `json:"date_start"` // Dạng "YYYY-MM-DD" hoặc null
+	DateEnd   *string `json:"date_end"`   // Dạng "YYYY-MM-DD" hoặc null
 }
 
 type ProductSaveRequest struct {
@@ -88,16 +99,17 @@ type ProductSaveRequest struct {
 	SubImages []ProductImage `json:"sub_images"`
 
 	// Trường ẩn/Xử lý logic
-	OfferStart        time.Time        `json:"-"`
-	OfferEnd          time.Time        `json:"-"`
-	ModelID           sql.NullInt64    `json:"-"`
-	FileName          sql.NullString   `json:"-"`
-	Categories        []Category       `json:"categories"`
-	RelatedProducts   []uint64         `json:"related_products"`     // Bỏ tag form
-	CategoryIDs       []uint32         `json:"category_ids"`         // Bỏ tag form
-	DeleteSubImageIDs []int64          `json:"delete_sub_image_ids"` // Bỏ tag form
-	Attributes        map[uint32][]int `json:"attributes"`           // Bỏ tag form
-	Variants          []VariantInput   `json:"variants"`             // Bỏ tag form
+	OfferStart        time.Time         `json:"-"`
+	OfferEnd          time.Time         `json:"-"`
+	ModelID           sql.NullInt64     `json:"-"`
+	FileName          sql.NullString    `json:"-"`
+	Categories        []Category        `json:"categories"`
+	RelatedProducts   []uint64          `json:"related_products"`     // Bỏ tag form
+	CategoryIDs       []uint32          `json:"category_ids"`         // Bỏ tag form
+	DeleteSubImageIDs []int64           `json:"delete_sub_image_ids"` // Bỏ tag form
+	Attributes        map[uint32][]int  `json:"attributes"`           // Bỏ tag form
+	Variants          []VariantInput    `json:"variants"`             // Bỏ tag form
+	Discounts         []ProductDiscount `json:"discounts"`
 }
 
 type ProductImage struct {

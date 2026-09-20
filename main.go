@@ -428,7 +428,7 @@ func main() {
 		redisOpt,
 		asynq.Config{
 			Concurrency: 10,
-			LogLevel:    asynq.ErrorLevel, // 👈 ĐẶT LÀ InfoLevel HOẶC ErrorLevel (KHÔNG XÓA DÒNG NÀY)
+			LogLevel:    asynq.ErrorLevel,
 			Queues: map[string]int{
 				"emails":  6,
 				"default": 3,
@@ -438,6 +438,9 @@ func main() {
 
 	mux := asynq.NewServeMux()
 	mux.HandleFunc(tasks.TypeSendDynamicEmail, tasks.HandleDynamicEmailTask)
+
+	// 💡 Đăng ký Handler mới cho Abandoned Cart
+	mux.HandleFunc(tasks.TypeAbandonedCartRecovery, tasks.HandleAbandonedCartTask)
 
 	go func() {
 		if err := srv.Run(mux); err != nil {
@@ -474,6 +477,7 @@ func main() {
 			protectedCustomerGroup.POST("/address/create", controllers.StoreAddress)
 			protectedCustomerGroup.POST("/address/:id/update", controllers.UpdateAddress)
 			protectedCustomerGroup.DELETE("/address/:id/delete", controllers.DeleteAddress)
+			protectedCustomerGroup.GET("/try-on-history", controllers.ListCustomerTryOnImages)
 			returnService := services.NewReturnService()
 			returnCtrl := controllers.NewReturnController(returnService)
 			returns := protectedCustomerGroup.Group("/refund")
@@ -708,34 +712,34 @@ func main() {
 					filtersGroup.PUT("/:id", func(c *gin.Context) { updateHandler(c, "filters") })
 					filtersGroup.DELETE("/:id", func(c *gin.Context) { deleteHandler(c, "filters") })
 				}
+				/*
+					// Inventories API
+					inventoriesGroup := adminAuth.Group("/inventory")
+					{
+						inventoriesGroup.GET("/", func(c *gin.Context) { getHandler(c, "inventories") })
+						inventoriesGroup.POST("/", func(c *gin.Context) { createHandler(c, "inventories") })
+						inventoriesGroup.PUT("/:id", func(c *gin.Context) { updateHandler(c, "inventories") })
+						inventoriesGroup.DELETE("/:id", func(c *gin.Context) { deleteHandler(c, "inventories") })
+					}
 
-				// Inventories API
-				inventoriesGroup := adminAuth.Group("/inventory")
-				{
-					inventoriesGroup.GET("/", func(c *gin.Context) { getHandler(c, "inventories") })
-					inventoriesGroup.POST("/", func(c *gin.Context) { createHandler(c, "inventories") })
-					inventoriesGroup.PUT("/:id", func(c *gin.Context) { updateHandler(c, "inventories") })
-					inventoriesGroup.DELETE("/:id", func(c *gin.Context) { deleteHandler(c, "inventories") })
-				}
+					// Inventory Adjust API
+					invAdjustGroup := adminAuth.Group("/inventory_adjust")
+					{
+						invAdjustGroup.GET("/", func(c *gin.Context) { getHandler(c, "inventory_adjusts") })
+						invAdjustGroup.POST("/", func(c *gin.Context) { createHandler(c, "inventory_adjusts") })
+						invAdjustGroup.PUT("/:id", func(c *gin.Context) { updateHandler(c, "inventory_adjusts") })
+						invAdjustGroup.DELETE("/:id", func(c *gin.Context) { deleteHandler(c, "inventory_adjusts") })
+					}
 
-				// Inventory Adjust API
-				invAdjustGroup := adminAuth.Group("/inventory_adjust")
-				{
-					invAdjustGroup.GET("/", func(c *gin.Context) { getHandler(c, "inventory_adjusts") })
-					invAdjustGroup.POST("/", func(c *gin.Context) { createHandler(c, "inventory_adjusts") })
-					invAdjustGroup.PUT("/:id", func(c *gin.Context) { updateHandler(c, "inventory_adjusts") })
-					invAdjustGroup.DELETE("/:id", func(c *gin.Context) { deleteHandler(c, "inventory_adjusts") })
-				}
-
-				// Inventory History API
-				invHistoryGroup := adminAuth.Group("/inventory_history")
-				{
-					invHistoryGroup.GET("/", func(c *gin.Context) { getHandler(c, "inventory_histories") })
-					invHistoryGroup.POST("/", func(c *gin.Context) { createHandler(c, "inventory_histories") })
-					invHistoryGroup.PUT("/:id", func(c *gin.Context) { updateHandler(c, "inventory_histories") })
-					invHistoryGroup.DELETE("/:id", func(c *gin.Context) { deleteHandler(c, "inventory_histories") })
-				}
-
+					// Inventory History API
+					invHistoryGroup := adminAuth.Group("/inventory_history")
+					{
+						invHistoryGroup.GET("/", func(c *gin.Context) { getHandler(c, "inventory_histories") })
+						invHistoryGroup.POST("/", func(c *gin.Context) { createHandler(c, "inventory_histories") })
+						invHistoryGroup.PUT("/:id", func(c *gin.Context) { updateHandler(c, "inventory_histories") })
+						invHistoryGroup.DELETE("/:id", func(c *gin.Context) { deleteHandler(c, "inventory_histories") })
+					}
+				*/
 				// Newsletter API
 				newsletterGroup := adminAuth.Group("/newsletter")
 				{

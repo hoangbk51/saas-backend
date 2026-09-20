@@ -148,6 +148,7 @@ type CartItemWithProduct struct {
 	ProductTitle     string        `db:"title"`
 	ProductWeight    float64       `db:"weight"`
 	Option           string
+	CategoryIDs      []int64 // 🟢 Chuyển thành mảng danh mục
 }
 
 type ApplyCouponPayload struct {

@@ -17,6 +17,48 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// Hàm đồng bộ thông tin giảm giá mua nhiều vào DB
+func SyncProductDiscounts(c *gin.Context, tx *sql.Tx, productID int64, discounts []models.ProductDiscount) error {
+	// 1. Xóa toàn bộ giảm giá cũ của sản phẩm
+	deleteQuery := `DELETE FROM product_discounts WHERE product_id = ?`
+	if _, err := tx.ExecContext(c.Request.Context(), deleteQuery, productID); err != nil {
+		return fmt.Errorf("lỗi xóa giảm giá cũ: %v", err)
+	}
+
+	if len(discounts) == 0 {
+		return nil
+	}
+
+	// 2. Insert lại danh sách giảm giá mới
+	insertQuery := `INSERT INTO product_discounts 
+		(product_id, quantity, priority, price, date_start, date_end, created_at, updated_at) 
+		VALUES `
+
+	var vals []interface{}
+	for _, d := range discounts {
+		insertQuery += "(?, ?, ?, ?, ?, ?, NOW(), NOW()),"
+
+		var dateStart, dateEnd interface{}
+		if d.DateStart != nil && *d.DateStart != "" {
+			dateStart = *d.DateStart
+		}
+		if d.DateEnd != nil && *d.DateEnd != "" {
+			dateEnd = *d.DateEnd
+		}
+
+		vals = append(vals, productID, d.Quantity, d.Priority, d.Price, dateStart, dateEnd)
+	}
+
+	// Cắt bỏ dấu phẩy cuối cùng
+	insertQuery = insertQuery[:len(insertQuery)-1]
+
+	if _, err := tx.ExecContext(c.Request.Context(), insertQuery, vals...); err != nil {
+		return fmt.Errorf("lỗi thêm mới danh sách giảm giá: %v", err)
+	}
+
+	return nil
+}
+
 func CreateProduct(c *gin.Context, p *models.ProductSaveRequest) (int64, error) {
 	db, err := utils.GetDBFromContext(c)
 	if err != nil {
@@ -47,6 +89,9 @@ func CreateProduct(c *gin.Context, p *models.ProductSaveRequest) (int64, error) 
 	}
 	if metaDescRaw := c.PostForm("meta_description"); metaDescRaw != "" {
 		_ = json.Unmarshal([]byte(metaDescRaw), &p.MetaDescription)
+	}
+	if discountsRaw := c.PostForm("discounts"); discountsRaw != "" {
+		_ = json.Unmarshal([]byte(discountsRaw), &p.Discounts)
 	}
 
 	if p.Slug == "" {
@@ -120,7 +165,6 @@ func CreateProduct(c *gin.Context, p *models.ProductSaveRequest) (int64, error) 
 		}
 	}
 
-	// Đã sửa: dùng p.Attributes thay vì req.Attributes
 	if len(p.Attributes) > 0 {
 		err = SyncProductAttributes(c, tx, uint64(productID), p.Attributes)
 		if err != nil {
@@ -131,6 +175,32 @@ func CreateProduct(c *gin.Context, p *models.ProductSaveRequest) (int64, error) 
 	if len(p.Variants) > 0 {
 		if err := SyncProductVariants(c, tx, uint64(productID), p.Variants); err != nil {
 			return 0, fmt.Errorf("lỗi đồng bộ biến thể sản phẩm: %v", err)
+		}
+	} else {
+
+		// TH 2: KHÔNG CÓ VARIANT -> Tự động tạo 1 Record Mặc Định vào product_variants
+		defaultSKU := p.SKU
+		if defaultSKU == "" {
+			defaultSKU = fmt.Sprintf("SKU-%d", productID) // Fallback SKU nếu sản phẩm chính không nhập SKU
+		}
+
+		queryDefaultVariant := `
+			INSERT INTO product_variants (
+				product_id, sku, price, compare_at_price, quantity, image, is_default, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, 1, NOW(), NOW())
+		`
+		_, err := tx.ExecContext(c, queryDefaultVariant,
+			productID, defaultSKU, p.SalePrice, p.SalePrice, p.StockQuantity, p.Image,
+		)
+		if err != nil {
+			return 0, fmt.Errorf("Lỗi tạo biến thể mặc định: %v", err)
+		}
+	}
+
+	// Đồng bộ danh sách giảm giá sản phẩm
+	if len(p.Discounts) > 0 {
+		if err := SyncProductDiscounts(c, tx, productID, p.Discounts); err != nil {
+			return 0, fmt.Errorf("lỗi đồng bộ giảm giá sản phẩm: %v", err)
 		}
 	}
 
@@ -165,7 +235,6 @@ func UpdateProduct(c *gin.Context, id string, p *models.ProductSaveRequest) erro
 		return fmt.Errorf("ID không hợp lệ: %v", err)
 	}
 
-	// 1. Nếu là multipart/form-data, parse toàn bộ các trường JSON phức tạp từ PostForm
 	if strings.HasPrefix(c.ContentType(), "multipart/form-data") {
 		parseJSONForm := func(key string, target interface{}) {
 			if val := c.PostForm(key); val != "" {
@@ -183,6 +252,7 @@ func UpdateProduct(c *gin.Context, id string, p *models.ProductSaveRequest) erro
 		parseJSONForm("category_ids", &p.CategoryIDs)
 		parseJSONForm("related_products", &p.RelatedProducts)
 		parseJSONForm("delete_sub_image_ids", &p.DeleteSubImageIDs)
+		parseJSONForm("discounts", &p.Discounts)
 	}
 
 	if p.RelatedProducts == nil {
@@ -217,7 +287,7 @@ func UpdateProduct(c *gin.Context, id string, p *models.ProductSaveRequest) erro
 				stock_quantity = ?, purchase_price = ?, sale_price = ?, shipping_weight = ?, 
 				active = ?, slug = ?, description = ?, short_description = ?, meta_title = ?, 
 				meta_description = ?, link_video = ?, linked_items = ?, updated_at = NOW()
-              WHERE id = ? AND deleted_at IS NULL`
+			  WHERE id = ? AND deleted_at IS NULL`
 
 	res, err := tx.ExecContext(c.Request.Context(), query,
 		p.BrandID, titleJSON, p.ModelNumber, p.SKU, p.Condition,
@@ -267,6 +337,13 @@ func UpdateProduct(c *gin.Context, id string, p *models.ProductSaveRequest) erro
 		}
 	}
 
+	// Cập nhật danh sách giảm giá sản phẩm
+	if p.Discounts != nil {
+		if err := SyncProductDiscounts(c, tx, productID, p.Discounts); err != nil {
+			return fmt.Errorf("lỗi đồng bộ giảm giá sản phẩm: %v", err)
+		}
+	}
+
 	if err = tx.Commit(); err != nil {
 		return fmt.Errorf("lỗi commit transaction update: %v", err)
 	}
@@ -305,12 +382,19 @@ func DeleteProduct(c *gin.Context, id string) error {
 	}
 	defer tx.Rollback()
 
+	// 1. Xóa các liên kết danh mục
 	deleteCategoriesQuery := `DELETE FROM category_product WHERE product_id = ?`
-	_, err = tx.ExecContext(c.Request.Context(), deleteCategoriesQuery, productID)
-	if err != nil {
+	if _, err = tx.ExecContext(c.Request.Context(), deleteCategoriesQuery, productID); err != nil {
 		return fmt.Errorf("lỗi xóa liên kết danh mục: %v", err)
 	}
 
+	// 2. Xóa thông tin giảm giá mua nhiều
+	deleteDiscountsQuery := `DELETE FROM product_discounts WHERE product_id = ?`
+	if _, err = tx.ExecContext(c.Request.Context(), deleteDiscountsQuery, productID); err != nil {
+		return fmt.Errorf("lỗi xóa giảm giá sản phẩm: %v", err)
+	}
+
+	// 3. Xóa sản phẩm
 	deleteProductQuery := `DELETE FROM products WHERE id = ?`
 	result, err := tx.ExecContext(c.Request.Context(), deleteProductQuery, productID)
 	if err != nil {
@@ -328,6 +412,7 @@ func DeleteProduct(c *gin.Context, id string) error {
 
 	return nil
 }
+
 func GetProductDetail(c *gin.Context, productID int64) (*models.Product, error) {
 	db, err := utils.GetDBFromContext(c)
 	if err != nil {
@@ -538,7 +623,6 @@ func GetProductDetail(c *gin.Context, productID int64) (*models.Product, error) 
 		}
 	}
 
-	// ĐÃ CẬP NHẬT: Thay av.value bằng av.name (và lọc bỏ record bị soft delete nếu cần)
 	attrQuery := `
 		SELECT 
 			pa.id AS product_attribute_id,
@@ -559,9 +643,8 @@ func GetProductDetail(c *gin.Context, productID int64) (*models.Product, error) 
 	}
 	defer attrRows.Close()
 
-	// Dùng map để nhóm các attribute_value theo attribute_id
 	attrGroupMap := make(map[uint32]*models.GroupedAttribute)
-	attrOrders := make([]uint32, 0) // Giữ đúng thứ tự attribute_id xuất hiện
+	attrOrders := make([]uint32, 0)
 
 	for attrRows.Next() {
 		var (
@@ -583,14 +666,12 @@ func GetProductDetail(c *gin.Context, productID int64) (*models.Product, error) 
 			continue
 		}
 
-		// Xử lý NullString cho valueName
 		var valNameStr *string
 		if valueName.Valid {
 			str := valueName.String
 			valNameStr = &str
 		}
 
-		// Nếu nhóm attribute_id này chưa có trong map -> Tạo mới
 		if _, exists := attrGroupMap[attributeID]; !exists {
 			attrGroupMap[attributeID] = &models.GroupedAttribute{
 				AttributeID:   attributeID,
@@ -600,7 +681,6 @@ func GetProductDetail(c *gin.Context, productID int64) (*models.Product, error) 
 			attrOrders = append(attrOrders, attributeID)
 		}
 
-		// Append (thêm) giá trị mới vào danh sách Items thay vì đè
 		attrGroupMap[attributeID].Items = append(attrGroupMap[attributeID].Items, models.AttributeValueItem{
 			ProductAttributeID: productAttributeID,
 			AttributeValueID:   attributeValueID,
@@ -608,13 +688,11 @@ func GetProductDetail(c *gin.Context, productID int64) (*models.Product, error) 
 		})
 	}
 
-	// Chuyển từ Map sang Slice để trả về cho Product.Attributes
 	p.Attributes = make([]models.GroupedAttribute, 0, len(attrOrders))
 	for _, aID := range attrOrders {
 		p.Attributes = append(p.Attributes, *attrGroupMap[aID])
 	}
 
-	// --- BỔ SUNG: Lấy danh sách Variants của sản phẩm ---
 	variantsQuery := `
 		SELECT 
 			v.id, v.sku, v.price, v.compare_at_price, v.quantity, COALESCE(v.image, ''), v.is_default,
@@ -656,7 +734,6 @@ func GetProductDetail(c *gin.Context, productID int64) (*models.Product, error) 
 				vDetail.CompareAtPrice = &compPriceNull.Float64
 			}
 
-			// Parse chuỗi "10,21" thành slice []uint64{10, 21}
 			vDetail.OptionValueIDs = []uint64{}
 			if ovIDsStr != "" {
 				parts := strings.Split(ovIDsStr, ",")
@@ -670,8 +747,35 @@ func GetProductDetail(c *gin.Context, productID int64) (*models.Product, error) 
 			variants = append(variants, vDetail)
 		}
 
-		// Gán mảng Variants vào struct Product trả về
 		p.Variants = variants
+	}
+
+	// --- BỔ SUNG: Lấy danh sách giảm giá sản phẩm ---
+	p.Discounts = []models.ProductDiscount{}
+	discountsQuery := `
+		SELECT id, product_id, quantity, priority, price, date_start, date_end
+		FROM product_discounts
+		WHERE product_id = ?
+		ORDER BY priority ASC, quantity ASC
+	`
+	dRows, err := db.QueryContext(c.Request.Context(), discountsQuery, productID)
+	if err == nil {
+		defer dRows.Close()
+		for dRows.Next() {
+			var d models.ProductDiscount
+			var dStartNull, dEndNull sql.NullString
+
+			err := dRows.Scan(&d.ID, &d.ProductID, &d.Quantity, &d.Priority, &d.Price, &dStartNull, &dEndNull)
+			if err == nil {
+				if dStartNull.Valid {
+					d.DateStart = &dStartNull.String
+				}
+				if dEndNull.Valid {
+					d.DateEnd = &dEndNull.String
+				}
+				p.Discounts = append(p.Discounts, d)
+			}
+		}
 	}
 
 	return p, nil
@@ -798,15 +902,6 @@ func GetProductBySlug(c *gin.Context, slug string) (*models.Product, error) {
 		p.OfferEnd = offerEndNull.Time
 	}
 
-	/*
-		if p.ModelID.Valid && p.FileName.Valid && p.FileName.String != "" {
-			p.Image = fmt.Sprintf("http://%s/storage/tenancy/%s/app/public/%v/%v",
-				domainApi, tenantId, p.ModelID.Int64, p.FileName.String,
-			)
-		} else {
-			p.Image = "https://tutaoweb.com/images/clothe.png"
-		}
-	*/
 	p.SubImages = []models.ProductImage{}
 	subImagesQuery := `
 		SELECT id, file_name 
@@ -890,7 +985,6 @@ func GetProductBySlug(c *gin.Context, slug string) (*models.Product, error) {
 		}
 	}
 
-	// ĐÃ CẬP NHẬT: Thay av.value bằng av.name (và lọc bỏ record bị soft delete nếu cần)
 	attrQuery := `
 		SELECT 
 			pa.id AS product_attribute_id,
@@ -911,9 +1005,8 @@ func GetProductBySlug(c *gin.Context, slug string) (*models.Product, error) {
 	}
 	defer attrRows.Close()
 
-	// Dùng map để nhóm các attribute_value theo attribute_id
 	attrGroupMap := make(map[uint32]*models.GroupedAttribute)
-	attrOrders := make([]uint32, 0) // Giữ đúng thứ tự attribute_id xuất hiện
+	attrOrders := make([]uint32, 0)
 
 	for attrRows.Next() {
 		var (
@@ -935,14 +1028,12 @@ func GetProductBySlug(c *gin.Context, slug string) (*models.Product, error) {
 			continue
 		}
 
-		// Xử lý NullString cho valueName
 		var valNameStr *string
 		if valueName.Valid {
 			str := valueName.String
 			valNameStr = &str
 		}
 
-		// Nếu nhóm attribute_id này chưa có trong map -> Tạo mới
 		if _, exists := attrGroupMap[attributeID]; !exists {
 			attrGroupMap[attributeID] = &models.GroupedAttribute{
 				AttributeID:   attributeID,
@@ -952,7 +1043,6 @@ func GetProductBySlug(c *gin.Context, slug string) (*models.Product, error) {
 			attrOrders = append(attrOrders, attributeID)
 		}
 
-		// Append (thêm) giá trị mới vào danh sách Items thay vì đè
 		attrGroupMap[attributeID].Items = append(attrGroupMap[attributeID].Items, models.AttributeValueItem{
 			ProductAttributeID: productAttributeID,
 			AttributeValueID:   attributeValueID,
@@ -960,13 +1050,11 @@ func GetProductBySlug(c *gin.Context, slug string) (*models.Product, error) {
 		})
 	}
 
-	// Chuyển từ Map sang Slice để trả về cho Product.Attributes
 	p.Attributes = make([]models.GroupedAttribute, 0, len(attrOrders))
 	for _, aID := range attrOrders {
 		p.Attributes = append(p.Attributes, *attrGroupMap[aID])
 	}
 
-	// --- BỔ SUNG: Lấy danh sách Variants của sản phẩm ---
 	variantsQuery := `
 		SELECT 
 			v.id, v.sku, v.price, v.compare_at_price, v.quantity, COALESCE(v.image, ''), v.is_default,
@@ -1008,7 +1096,6 @@ func GetProductBySlug(c *gin.Context, slug string) (*models.Product, error) {
 				vDetail.CompareAtPrice = &compPriceNull.Float64
 			}
 
-			// Parse chuỗi "10,21" thành slice []uint64{10, 21}
 			vDetail.OptionValueIDs = []uint64{}
 			if ovIDsStr != "" {
 				parts := strings.Split(ovIDsStr, ",")
@@ -1022,8 +1109,35 @@ func GetProductBySlug(c *gin.Context, slug string) (*models.Product, error) {
 			variants = append(variants, vDetail)
 		}
 
-		// Gán mảng Variants vào struct Product trả về
 		p.Variants = variants
+	}
+
+	// --- BỔ SUNG: Lấy danh sách giảm giá sản phẩm ---
+	p.Discounts = []models.ProductDiscount{}
+	discountsQuery := `
+		SELECT id, product_id, quantity, priority, price, date_start, date_end
+		FROM product_discounts
+		WHERE product_id = ?
+		ORDER BY priority ASC, quantity ASC
+	`
+	dRows, err := db.QueryContext(c.Request.Context(), discountsQuery, productID)
+	if err == nil {
+		defer dRows.Close()
+		for dRows.Next() {
+			var d models.ProductDiscount
+			var dStartNull, dEndNull sql.NullString
+
+			err := dRows.Scan(&d.ID, &d.ProductID, &d.Quantity, &d.Priority, &d.Price, &dStartNull, &dEndNull)
+			if err == nil {
+				if dStartNull.Valid {
+					d.DateStart = &dStartNull.String
+				}
+				if dEndNull.Valid {
+					d.DateEnd = &dEndNull.String
+				}
+				p.Discounts = append(p.Discounts, d)
+			}
+		}
 	}
 
 	return p, nil
