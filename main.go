@@ -565,16 +565,23 @@ func main() {
 				// Customers API
 				customersGroup := adminAuth.Group("/customer")
 				{
-
+					customersGroup.GET("/:id", controllers.GetCustomerDetail)
 					customersGroup.GET("/transaction", controllers.GetCustomerTransactions)
 					customersGroup.GET("/address", controllers.ListAdminCustomerAddresses)
 					customersGroup.POST("/address", controllers.StoreAdminAddress)
 					customersGroup.PUT("/address/:id", controllers.UpdateAdminAddress)
 					customersGroup.DELETE("/address/:id", controllers.DeleteAddress)
-					customersGroup.GET("/", getCustomersHandler)
-					customersGroup.POST("/", createCustomerHandler)
-					customersGroup.PUT("/:id", updateCustomerHandler)
-					customersGroup.DELETE("/:id", deleteCustomerHandler)
+					//customersGroup.GET("/", getCustomersHandler)
+
+					customersGroup.GET("/", controllers.ListCustomers)
+					customersGroup.POST("/", controllers.CreateCustomer)
+					customersGroup.PUT("/:id", controllers.UpdateCustomer)
+					customersGroup.DELETE("/:id", controllers.DeleteCustomer)
+
+					// Customer Histories CRUD
+					customersGroup.POST("/:id/histories", controllers.AddCustomerHistory)
+					customersGroup.PUT("/customer-histories/:history_id", controllers.UpdateCustomerHistory)
+					customersGroup.DELETE("/customer-histories/:history_id", controllers.DeleteCustomerHistory)
 
 				}
 
@@ -779,10 +786,11 @@ func main() {
 				// Review API
 				reviewGroup := adminAuth.Group("/review")
 				{
-					reviewGroup.GET("/", func(c *gin.Context) { getHandler(c, "reviews") })
+					reviewGroup.GET("/reviews", controllers.ListReviews)
+					reviewGroup.PUT("/reviews/:id", controllers.UpdateReview)    // Duyệt / Đánh dấu Spam / Sửa
+					reviewGroup.DELETE("/reviews/:id", controllers.DeleteReview) // Xóa review
 					reviewGroup.POST("/", func(c *gin.Context) { createHandler(c, "reviews") })
-					reviewGroup.PUT("/:id", func(c *gin.Context) { updateHandler(c, "reviews") })
-					reviewGroup.DELETE("/:id", func(c *gin.Context) { deleteHandler(c, "reviews") })
+
 				}
 
 				// Role API
@@ -2237,15 +2245,6 @@ func deletePageHandler(c *gin.Context) {
 // Customers handlers
 func getCustomersHandler(c *gin.Context) {
 	getHandler(c, "customers")
-}
-func createCustomerHandler(c *gin.Context) {
-	createHandler(c, "customers")
-}
-func updateCustomerHandler(c *gin.Context) {
-	updateHandler(c, "customers")
-}
-func deleteCustomerHandler(c *gin.Context) {
-	deleteHandler(c, "customers")
 }
 
 // Settings handlers
