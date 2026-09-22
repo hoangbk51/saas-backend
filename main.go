@@ -642,19 +642,25 @@ func main() {
 				// Language API
 				languageGroup := adminAuth.Group("/language")
 				{
-					languageGroup.GET("/", func(c *gin.Context) { getHandler(c, "languages") })
-					languageGroup.POST("/", func(c *gin.Context) { createHandler(c, "languages") })
-					languageGroup.PUT("/:id", func(c *gin.Context) { updateHandler(c, "languages") })
-					languageGroup.DELETE("/:id", func(c *gin.Context) { deleteHandler(c, "languages") })
+					languageGroup.GET("/", controllers.ListLanguages)
+					languageGroup.GET("/:id", controllers.GetLanguageDetail)
+					languageGroup.POST("/", controllers.CreateLanguage)
+					languageGroup.PUT("/:id", controllers.UpdateLanguage)
+					languageGroup.DELETE("/:id", controllers.DeleteLanguage)
+
 				}
 
 				// Currency API
 				currencyGroup := adminAuth.Group("/currency")
 				{
-					currencyGroup.GET("/", func(c *gin.Context) { getHandler(c, "currencies") })
-					currencyGroup.POST("/", func(c *gin.Context) { createHandler(c, "currencies") })
-					currencyGroup.PUT("/:id", func(c *gin.Context) { updateHandler(c, "currencies") })
-					currencyGroup.DELETE("/:id", func(c *gin.Context) { deleteHandler(c, "currencies") })
+
+					// Currencies CRUD
+					currencyGroup.GET("/", controllers.ListCurrencies)
+					currencyGroup.GET("/:id", controllers.GetCurrencyDetail)
+					currencyGroup.POST("/", controllers.CreateCurrency)
+					currencyGroup.PUT("/:id", controllers.UpdateCurrency)
+					currencyGroup.DELETE("/:id", controllers.DeleteCurrency)
+
 				}
 
 				// Country API
@@ -705,10 +711,12 @@ func main() {
 				// Blog Category API
 				blogCatGroup := adminAuth.Group("/blog_category")
 				{
-					blogCatGroup.GET("/", func(c *gin.Context) { getHandler(c, "blog_categories") })
-					blogCatGroup.POST("/", func(c *gin.Context) { createHandler(c, "blog_categories") })
-					blogCatGroup.PUT("/:id", func(c *gin.Context) { updateHandler(c, "blog_categories") })
-					blogCatGroup.DELETE("/:id", func(c *gin.Context) { deleteHandler(c, "blog_categories") })
+					blogCatGroup.GET("/", controllers.ListBlogCategories)
+					blogCatGroup.GET("/:id", controllers.GetBlogCategoryDetail)
+					blogCatGroup.POST("/", controllers.CreateBlogCategory)
+					blogCatGroup.PUT("/:id", controllers.UpdateBlogCategory)
+					blogCatGroup.DELETE("/:id", controllers.DeleteBlogCategory)
+
 				}
 
 				// Filters API
