@@ -41,8 +41,8 @@ func GetCartById(c *gin.Context, cartID int64) (*models.Cart, error) {
 	query := `SELECT 
 				id, customer_id, ip_address, shipping_country_id, shipping_zone_id, 
 				shipping_rate_id, item_count, quantity, total, discount, 
-				shipping, taxes, grand_total, shipping_weight, billing_address, 
-				shipping_address, coupon_id, payment_method_id, shipping_method_code, shipping_method_sub_code, 
+				shipping, taxes, grand_total, shipping_weight, COALESCE(billing_address, '') AS billing_address, 
+				COALESCE(shipping_address, '') AS shipping_address, coupon_id, payment_method_id, shipping_method_code, shipping_method_sub_code, 
 				shipping_state_id, shipping_district_id,shipping_ward_id, created_at, updated_at 
 			  FROM carts WHERE id = ? AND deleted_at IS NULL LIMIT 1`
 

@@ -19,6 +19,7 @@ func GetConversations(c *gin.Context) ([]models.Conversation, error) {
 		SELECT
 			id,
 			customer_id,
+			customer_name,
 			assigned_admin_id,
 			status,
 			last_message_at,
@@ -42,6 +43,7 @@ func GetConversations(c *gin.Context) ([]models.Conversation, error) {
 		err := rows.Scan(
 			&conversation.ID,
 			&conversation.CustomerID,
+			&conversation.CustomerName,
 			&conversation.AssignedAdminID,
 			&conversation.Status,
 			&conversation.LastMessageAt,
@@ -58,7 +60,7 @@ func GetConversations(c *gin.Context) ([]models.Conversation, error) {
 			conversation,
 		)
 	}
-
+	utils.LogToFile(conversations)
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
@@ -146,7 +148,7 @@ func GetConversationMessages(
 	if err != nil {
 		//	return nil, err
 	}
-
+	utils.LogToFile("GetConversationMessages")
 	rows, err := db.Query(
 		`
 		SELECT

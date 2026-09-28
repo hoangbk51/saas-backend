@@ -11,7 +11,7 @@ import (
 
 func ChatAuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-
+		utils.LogToFile("ChatAuthMiddleware")
 		// Default = guest
 		c.Set("chatRole", "guest")
 		c.Set("customerID", int64(0))

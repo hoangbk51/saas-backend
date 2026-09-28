@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"go-saas/models"
 	"go-saas/utils"
@@ -14,6 +15,27 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
 )
+
+// FlexibleBool supports unmarshaling boolean, integer, or string representations of bool
+type FlexibleBool bool
+
+func (b *FlexibleBool) UnmarshalJSON(data []byte) error {
+	s := strings.Trim(string(data), `"`)
+	if s == "1" || s == "true" || s == "TRUE" || s == "True" {
+		*b = true
+		return nil
+	}
+	if s == "0" || s == "false" || s == "FALSE" || s == "False" || s == "null" || s == "" {
+		*b = false
+		return nil
+	}
+	var val bool
+	if err := json.Unmarshal(data, &val); err == nil {
+		*b = FlexibleBool(val)
+		return nil
+	}
+	return nil
+}
 
 // Helper: helper function to update or insert stock in manage_stocks
 func adjustStockHelper(db *sqlx.DB, warehouseID uint64, productID uint64, variantID *uint64, diffQuantity doubleOrFloat) error {
@@ -888,6 +910,146 @@ func DeletePurchase(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Purchase deleted successfully"})
 }
 
+// UpdatePurchase handles PUT/POST /api/v2/admin/purchases/:id
+func UpdatePurchase(c *gin.Context) {
+	db, err := utils.GetDBFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Database connection error"})
+		return
+	}
+
+	id := c.Param("id")
+	var req struct {
+		Date            string   `json:"date"`
+		WarehouseID     uint32   `json:"warehouse_id"`
+		SupplierID      uint32   `json:"supplier_id"`
+		PaymentStatus   int      `json:"payment_status"`
+		StockStatus     int      `json:"stock_status"`
+		Note            *string  `json:"note"`
+		Notes           *string  `json:"notes"`
+		PurchasesNumber *string  `json:"purchases_number"`
+		ReferenceCode   *string  `json:"reference_code"`
+		TaxRate         *float64 `json:"tax_rate"`
+		TaxAmount       *float64 `json:"tax_amount"`
+		Discount        *float64 `json:"discount"`
+		Shipping        *float64 `json:"shipping"`
+		Total           float64  `json:"total"`
+		GrandTotal      *float64 `json:"grand_total"`
+		Debt            *float64 `json:"debt"`
+		TotalPaid       *float64 `json:"total_paid"`
+		Status          int      `json:"status"`
+		Items           []struct {
+			ProductID      uint64   `json:"product_id"`
+			ProductCost    *float64 `json:"product_cost"`
+			NetUnitCost    *float64 `json:"net_unit_cost"`
+			TaxType        int      `json:"tax_type"`
+			TaxValue       *float64 `json:"tax_value"`
+			TaxAmount      *float64 `json:"tax_amount"`
+			DiscountType   int      `json:"discount_type"`
+			DiscountValue  *float64 `json:"discount_value"`
+			DiscountAmount *float64 `json:"discount_amount"`
+			PurchaseUnit   int      `json:"purchase_unit"`
+			Quantity       float64  `json:"quantity"`
+			SubTotal       *float64 `json:"sub_total"`
+		} `json:"items"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
+		return
+	}
+
+	now := time.Now()
+	noteVal := req.Note
+	if noteVal == nil {
+		noteVal = req.Notes
+	}
+
+	tot := req.Total
+	if tot == 0 && req.GrandTotal != nil {
+		tot = *req.GrandTotal
+	}
+
+	// Update purchase row
+	_, err = db.Exec(`
+		UPDATE purchases 
+		SET warehouse_id = COALESCE(NULLIF(?, 0), warehouse_id),
+		    supplier_id = COALESCE(NULLIF(?, 0), supplier_id),
+		    payment_status = ?,
+		    stock_status = ?,
+		    status = ?,
+		    total = ?,
+		    note = COALESCE(?, note),
+		    date = COALESCE(NULLIF(?, ''), date),
+		    updated_at = ?
+		WHERE id = ? AND deleted_at IS NULL`,
+		req.WarehouseID, req.SupplierID, req.PaymentStatus, req.StockStatus, req.Status, tot, noteVal, req.Date, now, id)
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
+		return
+	}
+
+	// If items are provided, update items and adjust stocks in manage_stocks
+	if len(req.Items) > 0 {
+		// Reverse previous items stock if previous status was received (status 1/2 or stock_status 1)
+		var prevWarehouseID uint64
+		var prevStatus, prevStockStatus int
+		_ = db.QueryRow("SELECT warehouse_id, status, stock_status FROM purchases WHERE id = ?", id).Scan(&prevWarehouseID, &prevStatus, &prevStockStatus)
+
+		if prevStatus == 1 || prevStatus == 2 || prevStockStatus == 1 {
+			rows, qErr := db.Query("SELECT product_id, quantity FROM purchase_items WHERE purchase_id = ?", id)
+			if qErr == nil {
+				defer rows.Close()
+				for rows.Next() {
+					var pid uint64
+					var qty float64
+					if scanErr := rows.Scan(&pid, &qty); scanErr == nil && qty > 0 {
+						_ = adjustStockHelper(db, prevWarehouseID, pid, nil, doubleOrFloat(-qty))
+					}
+				}
+			}
+		}
+
+		// Delete old items
+		_, _ = db.Exec("DELETE FROM purchase_items WHERE purchase_id = ?", id)
+		_, _ = db.Exec("DELETE FROM purchase_details WHERE purchase_id = ?", id)
+
+		targetWh := uint64(req.WarehouseID)
+		if targetWh == 0 {
+			targetWh = prevWarehouseID
+		}
+
+		// Insert new items
+		for _, it := range req.Items {
+			if it.ProductID == 0 || it.Quantity <= 0 {
+				continue
+			}
+			_, _ = db.Exec(`
+				INSERT INTO purchase_items (purchase_id, product_id, product_cost, net_unit_cost, tax_type, tax_value, tax_amount, discount_type, discount_value, discount_amount, purchase_unit, quantity, sub_total, created_at, updated_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				id, it.ProductID, it.ProductCost, it.NetUnitCost, it.TaxType, it.TaxValue, it.TaxAmount, it.DiscountType, it.DiscountValue, it.DiscountAmount, it.PurchaseUnit, it.Quantity, it.SubTotal, now, now,
+			)
+
+			_, _ = db.Exec(`
+				INSERT INTO purchase_details (product_id, quantity, purchase_price, purchase_id, created_at, updated_at)
+				VALUES (?, ?, ?, ?, ?, ?)`,
+				it.ProductID, int(it.Quantity), it.ProductCost, id, now, now,
+			)
+
+			// Update stock in manage_stocks if received
+			if req.StockStatus == 1 || req.Status == 1 || req.Status == 2 {
+				_ = adjustStockHelper(db, targetWh, it.ProductID, nil, doubleOrFloat(it.Quantity))
+			}
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Purchase updated successfully",
+	})
+}
+
 // =========================================================================
 // 5. PURCHASE RETURNS (TRẢ HÀNG MUA)
 // =========================================================================
@@ -1126,6 +1288,126 @@ func DeletePurchaseReturn(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Purchase return deleted successfully"})
 }
 
+// UpdatePurchaseReturn handles PUT/POST /api/v2/admin/purchase-returns/:id
+func UpdatePurchaseReturn(c *gin.Context) {
+	db, err := utils.GetDBFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Database connection error"})
+		return
+	}
+
+	id := c.Param("id")
+	var req struct {
+		Date           string   `json:"date"`
+		SupplierID     uint64   `json:"supplier_id"`
+		WarehouseID    uint64   `json:"warehouse_id"`
+		TaxRate        *float64 `json:"tax_rate"`
+		TaxAmount      *float64 `json:"tax_amount"`
+		Discount       *float64 `json:"discount"`
+		Shipping       *float64 `json:"shipping"`
+		GrandTotal     *float64 `json:"grand_total"`
+		Total          *float64 `json:"total"`
+		ReceivedAmount *float64 `json:"received_amount"`
+		PaidAmount     *float64 `json:"paid_amount"`
+		PaymentType    *int     `json:"payment_type"`
+		Status         *int     `json:"status"`
+		PaymentStatus  *int     `json:"payment_status"`
+		Notes          *string  `json:"notes"`
+		Note           *string  `json:"note"`
+		Items          []struct {
+			ProductID      uint64   `json:"product_id"`
+			ProductCost    *float64 `json:"product_cost"`
+			NetUnitCost    *float64 `json:"net_unit_cost"`
+			TaxType        int      `json:"tax_type"`
+			TaxValue       *float64 `json:"tax_value"`
+			TaxAmount      *float64 `json:"tax_amount"`
+			DiscountType   int      `json:"discount_type"`
+			DiscountValue  *float64 `json:"discount_value"`
+			DiscountAmount *float64 `json:"discount_amount"`
+			PurchaseUnit   int      `json:"purchase_unit"`
+			Quantity       float64  `json:"quantity"`
+			SubTotal       *float64 `json:"sub_total"`
+		} `json:"items"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
+		return
+	}
+
+	now := time.Now()
+	notesVal := req.Notes
+	if notesVal == nil {
+		notesVal = req.Note
+	}
+	tot := req.GrandTotal
+	if tot == nil {
+		tot = req.Total
+	}
+
+	_, err = db.Exec(`
+		UPDATE purchase_returns 
+		SET supplier_id = COALESCE(NULLIF(?, 0), supplier_id),
+		    warehouse_id = COALESCE(NULLIF(?, 0), warehouse_id),
+		    grand_total = COALESCE(?, grand_total),
+		    status = COALESCE(?, status),
+		    payment_status = COALESCE(?, payment_status),
+		    notes = COALESCE(?, notes),
+		    date = COALESCE(NULLIF(?, ''), date),
+		    updated_at = ?
+		WHERE id = ?`,
+		req.SupplierID, req.WarehouseID, tot, req.Status, req.PaymentStatus, notesVal, req.Date, now, id)
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
+		return
+	}
+
+	if len(req.Items) > 0 {
+		var prevWarehouseID uint64
+		_ = db.QueryRow("SELECT warehouse_id FROM purchase_returns WHERE id = ?", id).Scan(&prevWarehouseID)
+
+		// Revert old return stock deduction
+		oldRows, qErr := db.Query("SELECT product_id, quantity FROM purchase_return_items WHERE purchase_return_id = ?", id)
+		if qErr == nil {
+			defer oldRows.Close()
+			for oldRows.Next() {
+				var pid uint64
+				var qty float64
+				if scanErr := oldRows.Scan(&pid, &qty); scanErr == nil && qty > 0 {
+					_ = adjustStockHelper(db, prevWarehouseID, pid, nil, doubleOrFloat(qty))
+				}
+			}
+		}
+
+		_, _ = db.Exec("DELETE FROM purchase_return_items WHERE purchase_return_id = ?", id)
+
+		targetWh := req.WarehouseID
+		if targetWh == 0 {
+			targetWh = prevWarehouseID
+		}
+
+		for _, it := range req.Items {
+			if it.ProductID == 0 || it.Quantity <= 0 {
+				continue
+			}
+			_, _ = db.Exec(`
+				INSERT INTO purchase_return_items (purchase_return_id, product_id, product_cost, net_unit_cost, tax_type, tax_value, tax_amount, discount_type, discount_value, discount_amount, purchase_unit, quantity, sub_total, created_at, updated_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				id, it.ProductID, it.ProductCost, it.NetUnitCost, it.TaxType, it.TaxValue, it.TaxAmount, it.DiscountType, it.DiscountValue, it.DiscountAmount, it.PurchaseUnit, it.Quantity, it.SubTotal, now, now,
+			)
+
+			// Deduct returned quantity from manage_stocks
+			_ = adjustStockHelper(db, targetWh, it.ProductID, nil, doubleOrFloat(-it.Quantity))
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Purchase return updated successfully",
+	})
+}
+
 // =========================================================================
 // 6. TRANSFERS (ĐỔI HÀNG GIỮA CÁC KHO)
 // =========================================================================
@@ -1359,6 +1641,112 @@ func DeleteTransfer(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Transfer deleted successfully"})
+}
+
+// UpdateTransfer handles PUT /api/v2/admin/transfers/:id
+func UpdateTransfer(c *gin.Context) {
+	db, err := utils.GetDBFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Database connection error"})
+		return
+	}
+
+	id := c.Param("id")
+	var req struct {
+		Date            string   `json:"date"`
+		FromWarehouseID uint64   `json:"from_warehouse_id"`
+		ToWarehouseID   uint64   `json:"to_warehouse_id"`
+		TaxRate         *float64 `json:"tax_rate"`
+		TaxAmount       *float64 `json:"tax_amount"`
+		Discount        *float64 `json:"discount"`
+		Shipping        *float64 `json:"shipping"`
+		GrandTotal      *float64 `json:"grand_total"`
+		Status          *int     `json:"status"`
+		Note            *string  `json:"note"`
+		ReferenceCode   *string  `json:"reference_code"`
+		Items           []struct {
+			ProductID      uint64   `json:"product_id"`
+			ProductCost    *float64 `json:"product_cost"`
+			NetUnitPrice   *float64 `json:"net_unit_price"`
+			TaxType        int      `json:"tax_type"`
+			TaxValue       *float64 `json:"tax_value"`
+			TaxAmount      *float64 `json:"tax_amount"`
+			DiscountType   int      `json:"discount_type"`
+			DiscountValue  *float64 `json:"discount_value"`
+			DiscountAmount *float64 `json:"discount_amount"`
+			Quantity       float64  `json:"quantity"`
+			SubTotal       *float64 `json:"sub_total"`
+		} `json:"items"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
+		return
+	}
+
+	var prevFromWh, prevToWh uint64
+	_ = db.QueryRow("SELECT from_warehouse_id, to_warehouse_id FROM transfers WHERE id = ?", id).Scan(&prevFromWh, &prevToWh)
+
+	now := time.Now()
+	_, err = db.Exec(`
+		UPDATE transfers
+		SET date = COALESCE(NULLIF(?, ''), date),
+		    from_warehouse_id = COALESCE(NULLIF(?, 0), from_warehouse_id),
+		    to_warehouse_id = COALESCE(NULLIF(?, 0), to_warehouse_id),
+		    status = COALESCE(?, status),
+		    note = COALESCE(?, note),
+		    grand_total = COALESCE(?, grand_total),
+		    updated_at = ?
+		WHERE id = ?`,
+		req.Date, req.FromWarehouseID, req.ToWarehouseID, req.Status, req.Note, req.GrandTotal, now, id)
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
+		return
+	}
+
+	if len(req.Items) > 0 {
+		// Revert old items stock
+		oldRows, qErr := db.Query("SELECT product_id, quantity FROM transfer_items WHERE transfer_id = ?", id)
+		if qErr == nil {
+			defer oldRows.Close()
+			for oldRows.Next() {
+				var pid uint64
+				var qty float64
+				if scanErr := oldRows.Scan(&pid, &qty); scanErr == nil && qty > 0 {
+					_ = adjustStockHelper(db, prevFromWh, pid, nil, doubleOrFloat(qty))
+					_ = adjustStockHelper(db, prevToWh, pid, nil, doubleOrFloat(-qty))
+				}
+			}
+		}
+
+		_, _ = db.Exec("DELETE FROM transfer_items WHERE transfer_id = ?", id)
+
+		targetFrom := req.FromWarehouseID
+		if targetFrom == 0 {
+			targetFrom = prevFromWh
+		}
+		targetTo := req.ToWarehouseID
+		if targetTo == 0 {
+			targetTo = prevToWh
+		}
+
+		for _, it := range req.Items {
+			if it.ProductID == 0 || it.Quantity <= 0 {
+				continue
+			}
+			_, _ = db.Exec(`
+				INSERT INTO transfer_items (transfer_id, product_id, product_cost, net_unit_price, tax_type, tax_value, tax_amount, discount_type, discount_value, discount_amount, quantity, sub_total, created_at, updated_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				id, it.ProductID, it.ProductCost, it.NetUnitPrice, it.TaxType, it.TaxValue, it.TaxAmount, it.DiscountType, it.DiscountValue, it.DiscountAmount, it.Quantity, it.SubTotal, now, now,
+			)
+
+			_ = adjustStockHelper(db, targetFrom, it.ProductID, nil, doubleOrFloat(-it.Quantity))
+			_ = adjustStockHelper(db, targetTo, it.ProductID, nil, doubleOrFloat(it.Quantity))
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Transfer updated successfully"})
 }
 
 // =========================================================================

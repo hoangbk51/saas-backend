@@ -152,6 +152,7 @@ func CreateConversation(c *gin.Context) {
 }
 
 func GetConversationMessages(c *gin.Context) {
+	utils.LogToFile("GetConversationMessages")
 	conversationID, err := strconv.ParseInt(
 		c.Param("conversationId"),
 		10,

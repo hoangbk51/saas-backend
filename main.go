@@ -819,70 +819,7 @@ func main() {
 					transactionGroup.PUT("/:id", func(c *gin.Context) { updateHandler(c, "transactions") })
 					transactionGroup.DELETE("/:id", func(c *gin.Context) { deleteHandler(c, "transactions") })
 				}
-				/*
-					// Purchase API
-					purchaseGroup := adminAuth.Group("/purchase")
-					{
-						purchaseGroup.GET("/", func(c *gin.Context) { getHandler(c, "purchases") })
-						purchaseGroup.POST("/", func(c *gin.Context) { createHandler(c, "purchases") })
-						purchaseGroup.PUT("/:id", func(c *gin.Context) { updateHandler(c, "purchases") })
-						purchaseGroup.DELETE("/:id", func(c *gin.Context) { deleteHandler(c, "purchases") })
-					}
 
-					// Purchase Return API
-					purchaseReturnGroup := adminAuth.Group("/purchase_return")
-					{
-						purchaseReturnGroup.GET("/", func(c *gin.Context) { getHandler(c, "purchase_returns") })
-						purchaseReturnGroup.POST("/", func(c *gin.Context) { createHandler(c, "purchase_returns") })
-						purchaseReturnGroup.PUT("/:id", func(c *gin.Context) { updateHandler(c, "purchase_returns") })
-						purchaseReturnGroup.DELETE("/:id", func(c *gin.Context) { deleteHandler(c, "purchase_returns") })
-					}
-				*/
-				/*
-					// Warehouse API
-					warehouseGroup := adminAuth.Group("/warehouse")
-					{
-						warehouseGroup.GET("/", func(c *gin.Context) { getHandler(c, "warehouses") })
-						warehouseGroup.POST("/", func(c *gin.Context) { createHandler(c, "warehouses") })
-						warehouseGroup.PUT("/:id", func(c *gin.Context) { updateHandler(c, "warehouses") })
-						warehouseGroup.DELETE("/:id", func(c *gin.Context) { deleteHandler(c, "warehouses") })
-					}
-
-					suppliersGroup := adminAuth.Group("/supplier")
-					{
-						suppliersGroup.GET("/", getSuppliersHandler)
-						suppliersGroup.POST("/", createSupplierHandler)
-						suppliersGroup.PUT("/:id", updateSupplierHandler)
-						suppliersGroup.DELETE("/:id", deleteSupplierHandler)
-					}
-
-					// Transfers API (Điều chuyển kho)
-					transfersGroup := adminAuth.Group("/transfer")
-					{
-						transfersGroup.GET("/", getTransfersHandler)
-						transfersGroup.POST("/", createTransferHandler)
-						transfersGroup.PUT("/:id", updateTransferHandler)
-						transfersGroup.DELETE("/:id", deleteTransferHandler)
-					}
-
-					// Adjustments API (Kiểm kê/Điều chỉnh kho)
-					adjustmentsGroup := adminAuth.Group("/adjustment")
-					{
-						adjustmentsGroup.GET("/", getAdjustmentsHandler)
-						adjustmentsGroup.POST("/", createAdjustmentHandler)
-						adjustmentsGroup.PUT("/:id", updateAdjustmentHandler)
-						adjustmentsGroup.DELETE("/:id", deleteAdjustmentHandler)
-					}
-
-					// Expenses API (Quản lý chi phí)
-					expensesGroup := adminAuth.Group("/expense")
-					{
-						expensesGroup.GET("/", getExpensesHandler)
-						expensesGroup.POST("/", createExpenseHandler)
-						expensesGroup.PUT("/:id", updateExpenseHandler)
-						expensesGroup.DELETE("/:id", deleteExpenseHandler)
-					}
-				*/
 				pageThemeGroup := adminAuth.Group("/page-themes")
 				{
 					pageThemeGroup.GET("/", controllers.GetPageThemesHandler)
@@ -1052,6 +989,17 @@ func main() {
 					//shopee.POST("/sync-products", controllers.SyncProductsFromChannel)
 				}
 
+				chatAssignment := adminAuth.Group("/chat/assignment")
+				{
+					chatAssignment.GET("/settings", controllers.GetChatAssignmentSettings)
+					chatAssignment.PUT("/settings", controllers.UpdateChatAssignmentSettings)
+					chatAssignment.GET("/agents", controllers.GetChatAgents)
+					chatAssignment.PUT("/agents/:id", controllers.UpdateChatAgent)
+					chatAssignment.POST("/assign", controllers.AutoAssignChat)
+					chatAssignment.POST("/transfer", controllers.TransferChat)
+					chatAssignment.POST("/internal-note", controllers.SaveChatInternalNote)
+					chatAssignment.GET("/kpi", controllers.GetChatKpiReport)
+				}
 			}
 		}
 
