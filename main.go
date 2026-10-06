@@ -1014,6 +1014,8 @@ func main() {
 		}
 		apiV2.GET("/page-builder/:id", controllers.GetLatestHistory)
 		apiV2.GET("/category/tree", controllers.CategoryTree)
+		apiV2.GET("/category/all", controllers.AllCategories)
+		//	apiV2.GET("/product/all", controllers.AllProducts)
 
 		apiV2.POST("/upload", uploadHandler)
 		apiV2.GET("/upload", upload2Handler)
@@ -1088,7 +1090,9 @@ func main() {
 		apiV2.POST("/goship/event", controllers.HandleGoshipEvent)
 		apiV2.GET("/goship/event", controllers.HandleGoshipEvent)
 		apiV2.POST("webhooks/telegram", controllers.HandleTelegramWebhook)
-		apiV2.GET("webhooks/telegram", controllers.HandleTelegramWebhookTest)
+
+		apiV2.POST("/telegram/internal/messages/process", controllers.HandleProcessMessage)
+
 		webhookGroup := apiV2.Group("/webhooks")
 		{
 			// Webhook từ Shopee
@@ -1096,7 +1100,6 @@ func main() {
 			webhookGroup.POST("/tiktok", controllers.TikTokWebhookHandler)
 
 		}
-		apiV2.POST("telegram/internal/messages/process", controllers.HandleProcessMessage)
 
 	}
 	r.Run(":9002")

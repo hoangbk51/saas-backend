@@ -155,6 +155,44 @@ func GetCategoryTree(c *gin.Context) ([]*models.Category, error) {
 
 }
 
+func AllCategories(c *gin.Context) ([]models.Category, error) {
+	db, err := utils.GetDBFromContext(c)
+
+	var flatCategories []models.Category
+	query := `SELECT id, parent_id,JSON_UNQUOTE(JSON_EXTRACT(name, '$.en')) as name, slug, description, active, featured, created_at, updated_at 
+              FROM categories WHERE deleted_at IS NULL`
+
+	rows, err := db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	// 2. Scan từng dòng vào struct
+	for rows.Next() {
+		var c models.Category
+		// Thứ tự biến trong Scan PHẢI đúng với thứ tự cột trong câu SELECT
+		err := rows.Scan(
+			&c.ID,
+			&c.ParentID,
+			&c.Name,
+			&c.Slug,
+			&c.Description,
+			&c.Active,
+			&c.Featured,
+			&c.CreatedAt,
+			&c.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		flatCategories = append(flatCategories, c)
+	}
+
+	return flatCategories, nil
+
+}
+
 func BuildCategoryTree(categories []models.Category) []*models.Category {
 	// 1. Chuyển toàn bộ slice data sang map chứa con trỏ để thao tác an toàn
 	nodes := make(map[uint32]*models.Category)

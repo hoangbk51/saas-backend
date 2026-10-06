@@ -80,3 +80,17 @@ func CategoryTree(c *gin.Context) {
 	})
 
 }
+
+func AllCategories(c *gin.Context) {
+	data, err := services.AllCategories(c)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"status": "error", "message": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status": "success",
+		"data":   data,
+	})
+
+}
