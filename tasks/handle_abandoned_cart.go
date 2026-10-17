@@ -79,7 +79,7 @@ func HandleAbandonedCartTask(ctx context.Context, t *asynq.Task) error {
 	c.Set("db", db)
 	c.Set("tenantId", p.TenantID)
 
-	mailService := utils.NewMailConfig()
+	mailService := utils.NewMailService()
 	if err := mailService.SendDynamicEmail(c, p.ToEmail, templateName, emailData); err != nil {
 		utils.LogToFile("[ABANDONED CART FAIL] Lỗi gửi mail Step %d: %v", p.Step, err)
 		return err // Trả về lỗi để Asynq Retry nếu cấu hình MaxRetry

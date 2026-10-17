@@ -52,7 +52,7 @@ func HandleOrderPaidEmailTask(ctx context.Context, t *asynq.Task) error {
 		"Totals":       totals,
 	}
 
-	mailService := utils.NewMailConfig()
+	mailService := utils.NewMailService()
 
 	// 2. Gửi mail cho Khách hàng
 	if order.Email != "" {
