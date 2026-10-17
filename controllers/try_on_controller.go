@@ -23,3 +23,12 @@ func ListCustomerTryOnImages(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"data": list})
 }
+
+func VirtualTryOnHandler(c *gin.Context) {
+	data, statusCode, err := services.ProcessVirtualTryOnService(c)
+	if err != nil {
+		c.JSON(statusCode, data)
+		return
+	}
+	c.JSON(statusCode, data)
+}

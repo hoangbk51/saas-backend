@@ -467,7 +467,7 @@ func main() {
 		protectedCustomerGroup := customerGroup.Group("/")
 		protectedCustomerGroup.Use(AuthCustomerMiddleware()) // App\Models\Customer
 		{
-
+			protectedCustomerGroup.POST("/virtual-try-on/", controllers.VirtualTryOnHandler)
 			protectedCustomerGroup.POST("/logout", controllers.LogoutCustomer)
 			protectedCustomerGroup.GET("/profile", customerProfile)
 			protectedCustomerGroup.GET("/orders", customerOrder)
@@ -1063,6 +1063,12 @@ func main() {
 		apiV2.POST("/checkout/ship/address/change", OptionalAuthMiddleware(), controllers.AddressChange)
 		apiV2.POST("/order/:id", OptionalAuthMiddleware(), controllers.CheckoutHandler)
 		apiV2.GET("/verify", controllers.CustomerVerifyHandler)
+		apiPhone := apiV2.Group("/phone")
+		{
+			apiPhone.POST("/send-otp", controllers.SendPhoneOTP)
+			apiPhone.POST("/verify-otp", controllers.VerifyPhoneOTP)
+		}
+
 		apiV2.GET("/paypal/callback", controllers.PayPalCallbackHandler)
 		apiV2.GET("/flutterwave/callback", controllers.FlutterwaveCallbackHandler)
 		apiV2.GET("/stripe/success", controllers.StripeHandleSuccess)

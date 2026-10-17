@@ -77,21 +77,6 @@ func CustomerRegisterHandler(c *gin.Context) error {
 		return err
 	}
 
-	//_ = tasks.EnqueueDynamicEmail(utils.AsynqClient, req.Email, "verify_registration", replacements)
-	/*
-		// 2. Chạy goroutine (Sử dụng c.Copy() vì dùng Context trong Goroutine là bắt buộc để tránh crash)
-		ctxCopy := c.Copy()
-		go func(email string, reps map[string]any) {
-			mailService := utils.NewMailConfig()
-
-			// Truyền reps (kiểu map[string]any) vào hàm
-			err := mailService.SendDynamicEmail(ctxCopy, email, "verify_registration", reps)
-
-			if err != nil {
-				log.Printf("Lỗi gửi mail động cho %s: %v", email, err)
-			}
-		}(req.Email, replacements)
-	*/
 	return nil
 }
 

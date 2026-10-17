@@ -409,13 +409,17 @@ func UpdateCustomerService(c *gin.Context, customerID int64) (interface{}, int, 
 	query := `
 		UPDATE customers 
 		SET name = ?, nice_name = ?, email = ?, phone = ?, dob = ?, sex = ?, 
-		    description = ?, active = ?, accepts_marketing = ?, updated_at = NOW() 
+		    description = ?, active = ?, accepts_marketing = ?,
+		    bust = ?, waist = ?, hips = ?, height = ?, weight = ?, suggested_size = ?,
+		    updated_at = NOW() 
 		WHERE id = ? AND deleted_at IS NULL`
 
 	res, err := db.ExecContext(
 		c.Request.Context(), query,
 		input.Name, input.NiceName, input.Email, input.Phone, input.Dob, input.Sex,
-		input.Description, input.Active, input.AcceptsMarketing, customerID,
+		input.Description, input.Active, input.AcceptsMarketing,
+		input.Bust, input.Waist, input.Hips, input.Height, input.Weight, input.SuggestedSize,
+		customerID,
 	)
 	if err != nil {
 		return gin.H{"error": "Lỗi cập nhật khách hàng: " + err.Error()}, http.StatusInternalServerError, err

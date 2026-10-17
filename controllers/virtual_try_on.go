@@ -1,8 +1,9 @@
 package controllers
 
 import (
-	"net/http"
 	"go-saas/services"
+	"go-saas/utils"
+	"net/http"
 
 	"github.com/gin-gonic/gin"
 )
@@ -12,6 +13,9 @@ import (
 func VirtualTryOn(c *gin.Context) {
 	// 1. Kiểm tra xác thực Customer (yêu cầu khách hàng đã đăng nhập)
 	customerIDVal, exists := c.Get("customerID")
+	utils.LogToFile("customerIDVal")
+
+	utils.LogToFile(customerIDVal)
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"success": false,
@@ -48,15 +52,10 @@ func VirtualTryOn(c *gin.Context) {
 		return
 	}
 
-	// 3. Gọi service AI Google Gemini để xử lý mặc thử đồ
-	resp, err := services.ProcessVirtualTryOn(c, req, customerID)
+	data, statusCode, err := services.ProcessVirtualTryOnService(c)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"error":   "Lỗi xử lý thử đồ ảo với Gemini AI: " + err.Error(),
-		})
+		c.JSON(statusCode, data)
 		return
 	}
-
-	c.JSON(http.StatusOK, resp)
+	c.JSON(statusCode, data)
 }

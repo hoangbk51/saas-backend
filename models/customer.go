@@ -11,6 +11,13 @@ type CustomerInput struct {
 	Description      *string `json:"description"`
 	Active           *int    `json:"active"`
 	AcceptsMarketing *int    `json:"accepts_marketing"`
+
+	Bust          *int    `json:"bust"`
+	Waist         *int    `json:"waist"`
+	Hips          *int    `json:"hips"`
+	Height        *int    `json:"height"`
+	Weight        *int    `json:"weight"`
+	SuggestedSize *string `json:"suggested_size"`
 }
 
 type CustomerHistoryInput struct {
