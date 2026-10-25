@@ -12,7 +12,6 @@ import (
 	"go-saas/tasks"
 	"go-saas/utils"
 	"log"
-	"log/slog"
 	"math"
 	"net/http"
 	"net/url"
@@ -406,17 +405,17 @@ func OptionalAuthMiddleware() gin.HandlerFunc {
 }
 
 func main() {
+	/*
+		logFile, err := os.OpenFile("C:/promtail/logs/app.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+		if err != nil {
+			log.Fatalf("Không thể mở file log: %v", err)
+		}
+		defer logFile.Close()
 
-	logFile, err := os.OpenFile("C:/promtail/logs/app.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
-	if err != nil {
-		log.Fatalf("Không thể mở file log: %v", err)
-	}
-	defer logFile.Close()
-
-	// 2. Cấu hình slog ghi định dạng JSON ra file này
-	logger := slog.New(slog.NewJSONHandler(logFile, nil))
-	slog.SetDefault(logger)
-
+		// 2. Cấu hình slog ghi định dạng JSON ra file này
+		logger := slog.New(slog.NewJSONHandler(logFile, nil))
+		slog.SetDefault(logger)
+	*/
 	defer utils.CentralDB.Close()
 
 	redisOpt := asynq.RedisClientOpt{
