@@ -145,6 +145,14 @@ func EnsureTelegramChatTables(db *sqlx.DB) error {
 // 1. POST /api/v2/webhooks/telegram
 // Nhận Webhook từ Telegram Server khi khách hàng nhắn tin cho Telegram Bot
 func HandleTelegramWebhook(c *gin.Context) {
+	if !utils.HasPlugin(c, "chat_telegram") {
+		c.JSON(http.StatusOK, gin.H{
+			"status":  "ignored",
+			"message": "Tenant has not installed Telegram plugin",
+		})
+		return
+	}
+
 	utils.LogToFile("� [Telegram Webhook] Received incoming update")
 
 	var update TelegramUpdate
@@ -493,10 +501,10 @@ func HandleProcessMessage(c *gin.Context) {
 
 	// 5. Trả về Response thành công
 	c.JSON(http.StatusOK, gin.H{
-		"success":         true,
-		"message_id":      time.Now().UnixNano(),
+		"success":          true,
+		"message_id":       time.Now().UnixNano(),
 		"telegram_chat_id": chatID,
-		"sender_type":     msg.SenderType,
+		"sender_type":      msg.SenderType,
 	})
 }
 

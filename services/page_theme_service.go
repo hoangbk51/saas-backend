@@ -58,7 +58,19 @@ func GetOtherPageThemes(c *gin.Context, offset, limit int) ([]PageTheme, int, er
 	var total int
 	db.QueryRow("SELECT COUNT(*) FROM page_themes WHERE page_type = 23 and  deleted_at IS NULL").Scan(&total)
 
-	query := "SELECT id, theme_id, page_type, slug, title,title as name, meta_description, meta_keywords, created_at FROM page_themes WHERE  page_type = 23 and deleted_at IS NULL LIMIT ? OFFSET ?"
+	query := `SELECT 
+                id, 
+                theme_id, 
+                page_type, 
+                COALESCE(slug, '') as slug, 
+                COALESCE(title, '') as title, 
+                COALESCE(title, '') as name, 
+                COALESCE(meta_description, '') as meta_description, 
+                COALESCE(meta_keywords, '') as meta_keywords, 
+                COALESCE(created_at, '1970-01-01 00:00:00') as created_at 
+              FROM page_themes 
+              WHERE page_type = 23 AND deleted_at IS NULL 
+              LIMIT ? OFFSET ?`
 	utils.LogSQL(query, limit, offset)
 
 	rows, err := db.Query(query, limit, offset)

@@ -108,3 +108,39 @@ func SetPluginSetting(c *gin.Context, pluginCode string, key string, value strin
 
 	return nil
 }
+
+func HasPlugin(c *gin.Context, pluginCode string) bool {
+	tenantID := c.GetString("tenantId")
+	if tenantID == "" || pluginCode == "" {
+		return false
+	}
+
+	centralDB, err := GetCentralDB()
+	if err != nil {
+		return false
+	}
+
+	query := `
+		SELECT COUNT(1) 
+		FROM tenant_plugins tp
+		INNER JOIN modules m ON tp.plugin_id = m.id
+		WHERE tp.tenant_id = ? 
+		  AND m.code = ?
+		  AND tp.status = 1 
+		  AND (tp.expires_at IS NULL OR tp.expires_at > NOW())
+		  AND m.status = 1 
+		  AND m.deleted_at IS NULL
+		LIMIT 1
+	`
+
+	// Log SQL
+	LogSQL(query, tenantID, pluginCode)
+
+	var count int
+	err = centralDB.QueryRow(query, tenantID, pluginCode).Scan(&count)
+	if err != nil {
+		return false
+	}
+
+	return count > 0
+}

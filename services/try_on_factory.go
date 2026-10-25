@@ -27,7 +27,7 @@ func GetTryOnProvider(providerName string) (models.TryOnProvider, error) {
 		return &PixelcutProvider{}, nil
 	case "virtual_tryon_gemini_flash":
 		return &GooglePromptProvider{}, nil
-	case "chatgpt_vton":
+	case "gpt_vton":
 		return &ChatGPTermPromptProvider{}, nil
 	default:
 		return nil, fmt.Errorf("provider '%s' không hỗ trợ", providerName)

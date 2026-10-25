@@ -37,8 +37,8 @@ func ProcessVirtualTryOnService(c *gin.Context) (interface{}, int, error) {
 	}
 
 	// 4. Lấy provider mặc định từ Settings
-	providerName := strings.ToLower(utils.GetSetting(c, "try_on_default_provider", "tutaoweb"))
-
+	providerName := strings.ToLower(utils.GetSetting(c, "try_on_default_provider", "gpt_vton"))
+	utils.LogToFile(providerName)
 	// 5. Khởi tạo Provider từ Factory
 	provider, err := GetTryOnProvider(providerName)
 	if err != nil {
