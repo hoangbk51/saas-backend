@@ -35,9 +35,9 @@ func GetTwilioConfig(c *gin.Context) (*TwilioConfig, error) {
 	fromNumber := utils.GetSetting(c, prefix+"from_number", "")
 	//verifyServiceSid := utils.GetSetting(c, prefix+"verify_service_sid", "")
 	channel := utils.GetSetting(c, prefix+"channel", "sms")
-	accountSid = "ACa0efb806060e0a02559f027e3b957a65"
-	authToken = "5b5cccdde079906445d52b87a5f799ee" // env('TWILIO_AUTH_TOKEN'); 5b5cccdde079906445d52b87a5f799ee
-	fromNumber = "+16282903102"                    // "whatsapp:+14155238886"           // "+14155238886"                    //env('TWILIO_WHATSAPP_FROM');//whatsapp:+
+	//accountSid = env('TWILIO_ACCOUNT_SID');
+	//authToken = env('TWILIO_AUTH_TOKEN');  // env('TWILIO_AUTH_TOKEN'); todo get from plugin setting
+	fromNumber = "+16282903102" // "whatsapp:+14155238886"           // "+14155238886"                    //env('TWILIO_WHATSAPP_FROM');//whatsapp:+
 	utils.LogSQL("GetTwilioConfig")
 	//16282903102
 	if accountSid == "" || authToken == "" {
